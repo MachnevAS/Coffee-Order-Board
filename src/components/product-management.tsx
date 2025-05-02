@@ -33,6 +33,13 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { ScrollArea } from "@/components/ui/scroll-area"; // Import ScrollArea
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"; // Import Tooltip components
+
 
 const productSchema = z.object({
   name: z.string().min(2, "Название товара должно содержать не менее 2 символов"),
@@ -350,7 +357,7 @@ export function ProductManagement() {
               <FormField control={form.control} name="volume" render={({ field }) => ( <FormItem><FormLabel>Объём (необязательно)</FormLabel><FormControl><Input placeholder="например, 0,3 л" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem> )} />
               <FormField control={form.control} name="price" render={({ field }) => ( <FormItem><FormLabel>Цена (₽)</FormLabel><FormControl><Input type="text" inputMode="numeric" pattern="[0-9]*([\.,][0-9]+)?" placeholder="например, 165" {...field} /></FormControl><FormMessage /></FormItem> )} />
               <FormField control={form.control} name="imageUrl" render={({ field }) => ( <FormItem><FormLabel>URL изображения (необязательно)</FormLabel><FormControl><Input placeholder="https://..." {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem> )} />
-              <FormField control={form.control} name="dataAiHint" render={({ field }) => ( <FormItem><FormLabel>Подсказка для ИИ-изображения (необязательно)</FormLabel><FormControl><Input placeholder="например, латте арт" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem> )} />
+              <FormField control={form.control} name="dataAiHint" render={({ field }) => ( <FormItem><FormLabel>Подсказка изображения (необязательно)</FormLabel><FormControl><Input placeholder="например, латте арт" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem> )} />
               <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-sm px-3">Добавить товар</Button> {/* Adjusted text size and padding */}
             </form>
           </Form>
@@ -361,13 +368,23 @@ export function ProductManagement() {
        <Card className="shadow-md flex flex-col h-full"> {/* Ensure card takes full height */}
         <CardHeader className="flex flex-row items-center justify-between pb-4"> {/* Added pb-4 */}
           <CardTitle className="text-lg md:text-xl">Существующие товары</CardTitle>
-           <Button variant="outline" size="sm" onClick={loadRawProducts} className="text-xs px-2 h-8"> {/* Adjusted text size and padding */}
-             <FilePlus2 className="h-4 w-4 mr-1" /> Загрузить начальные
-           </Button>
+           <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                 <Button variant="outline" size="icon" onClick={loadRawProducts} className="h-8 w-8"> {/* Changed to icon button */}
+                   <FilePlus2 className="h-4 w-4" /> {/* Removed text and mr-1 */}
+                   <span className="sr-only">Загрузить пример товаров</span>
+                 </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Загрузить пример товаров</p>
+              </TooltipContent>
+            </Tooltip>
+           </TooltipProvider>
         </CardHeader>
         <CardContent className="flex-grow overflow-hidden p-0"> {/* Remove padding, let ScrollArea handle it */}
             {/* Search Input for Existing Products */}
-            <div className="relative px-6 pb-4"> {/* Added padding */}
+            <div className="relative px-6 py-4"> {/* Added padding */}
               <Search className="absolute left-8 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /> {/* Adjusted left padding */}
               <Input
                 placeholder="Поиск товаров..."
