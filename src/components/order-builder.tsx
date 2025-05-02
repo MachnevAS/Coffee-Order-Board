@@ -262,18 +262,17 @@ export function OrderBuilder() {
              "p-3 md:p-4 flex-shrink-0",
              isSheet ? "pb-2 border-b" : "pb-3" // Add border bottom only for sheet header
            )}>
-             <CardTitle
-              id={isSheet ? orderSheetTitleId : undefined} // Assign ID only for Sheet title
-              className={cn(
-                "text-lg flex items-center justify-between",
-                 isSheet ? "text-lg" : "text-xl" // Adjust title size for sheet
-               )}
-            >
-              <span>Текущий заказ</span>
-              {/* Close button only for sheet */}
-              {isSheet && <SheetClose className="relative -top-1 -right-1" />}
-             </CardTitle>
-
+              {/* Wrap SheetTitle in a div to use it correctly */}
+             <div className={cn(
+                 "text-lg flex items-center justify-between",
+                  isSheet ? "text-lg" : "text-xl" // Adjust title size for sheet
+                )}>
+                <SheetTitle id={isSheet ? orderSheetTitleId : undefined} className={isSheet ? "text-lg" : "text-xl"}>
+                    Текущий заказ
+                </SheetTitle>
+                {/* Close button only for sheet */}
+                {isSheet && <SheetClose className="relative -top-1 -right-1" />}
+             </div>
           </CardHeader>
 
           {/* CardContent now correctly enables ScrollArea to work within flex layout */}
@@ -291,8 +290,8 @@ export function OrderBuilder() {
                          key={item.id}
                          className={cn(
                             "flex justify-between items-center text-sm gap-2 py-1 px-1 rounded-sm", // Added px and rounded
-                             // Add alternating background only in desktop view
-                             !isSheet && (index % 2 !== 0 ? 'bg-muted/50' : 'bg-card')
+                             // Add alternating background based on index, works for both sheet and desktop now
+                             (index % 2 !== 0 ? 'bg-muted/50' : 'bg-card')
                          )}
                        >
                          <div className="flex-grow overflow-hidden mr-1"> {/* Allow name to take space, add margin */}
