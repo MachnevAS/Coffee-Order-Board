@@ -20,7 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { Product } from "@/types/product";
 import { PlusCircle, Edit, Trash2, Save, X, FilePlus2 } from "lucide-react"; // Added icons
 import Image from "next/image";
-import { getDefaultProducts, getRawProductData } from "@/lib/product-defaults"; // Import defaults and raw data getter
+import { getRawProductData } from "@/lib/product-defaults"; // Import defaults and raw data getter
 import {
   AlertDialog,
   AlertDialogAction,
@@ -131,6 +131,7 @@ export function ProductManagement() {
             if (currentStoredValue !== newProductsJson) {
                 localStorage.setItem("coffeeProducts", newProductsJson);
                 console.log("ProductManagement: Products saved to localStorage.");
+                // Manually dispatch storage event for other components (like OrderBuilder)
                 window.dispatchEvent(new StorageEvent('storage', {
                     key: 'coffeeProducts',
                     newValue: newProductsJson,
@@ -230,25 +231,43 @@ export function ProductManagement() {
     if (!isClient) return;
     const rawProductData = getRawProductData();
     console.log("ProductManagement: Loading raw products.", rawProductData.length);
-    // Append raw products to the current list, ensuring no duplicates by ID
+
+    let productsToAdd: Product[] = [];
+    let messageTitle = "";
+    let messageDescription = "";
+    let messageVariant: "default" | "destructive" | null | undefined = "default"; // Type matches useToast
+
+    // Update state first
     setProducts(prevProducts => {
         const existingIds = new Set(prevProducts.map(p => p.id));
-        const productsToAdd = rawProductData.filter(rp => !existingIds.has(rp.id));
-        if (productsToAdd.length === 0) {
-             toast({
-                title: "Товары уже загружены",
-                description: "Начальный список товаров уже присутствует.",
-                variant: "default",
-             });
-            return prevProducts; // No change if all raw products already exist
+        const filteredProductsToAdd = rawProductData.filter(rp => !existingIds.has(rp.id));
+
+        if (filteredProductsToAdd.length === 0) {
+            // Prepare message but don't modify state
+            messageTitle = "Товары уже загружены";
+            messageDescription = "Начальный список товаров уже присутствует.";
+            return prevProducts; // Return existing products, no state change needed
+        } else {
+            // Prepare message and update state
+            productsToAdd = filteredProductsToAdd; // Assign for toast message later
+            messageTitle = "Начальные товары добавлены";
+            messageDescription = `Добавлено ${productsToAdd.length} новых товаров из начального списка.`;
+            return [...prevProducts, ...productsToAdd]; // Return updated products
         }
-        toast({
-            title: "Начальные товары добавлены",
-            description: `Добавлено ${productsToAdd.length} новых товаров из начального списка.`,
-        });
-        return [...prevProducts, ...productsToAdd];
     });
-   }
+
+    // Call toast *after* the setProducts update has been processed by React
+    if (messageTitle) {
+        // Use setTimeout to ensure toast call happens after the current render cycle
+        setTimeout(() => {
+            toast({
+                title: messageTitle,
+                description: messageDescription,
+                variant: messageVariant,
+            });
+        }, 0);
+    }
+   };
 
 
    if (!isClient) {
@@ -342,6 +361,7 @@ export function ProductManagement() {
                                 data-ai-hint={product.dataAiHint || 'кофе'}
                                 className="bg-muted"
                                  sizes="40px md:48px"
+                                 onError={(e) => { e.currentTarget.src = `https://picsum.photos/100/100?random=${product.id}&error=1` }} // Fallback for broken image URLs
                               />
                           </div>
 
@@ -397,3 +417,4 @@ export function ProductManagement() {
     </div>
   );
 }
+
