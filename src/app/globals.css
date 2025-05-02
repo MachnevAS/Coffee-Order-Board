@@ -17,8 +17,8 @@ body {
     --popover-foreground: 25 35% 15%;
     --primary: 25 35% 36%; /* Coffee Brown */
     --primary-foreground: 56 100% 91%; /* Cream */
-    --secondary: 40 30% 80%; /* Lighter Brown/Beige */
-    --secondary-foreground: 25 35% 15%;
+    --secondary: 220 5% 86%; /* Updated from 40 30% 80% to #dadce0 equivalent */
+    --secondary-foreground: 0 0% 10%; /* Updated from 25 35% 15% for better contrast */
     --muted: 40 30% 85%; /* Very Light Brown/Beige */
     --muted-foreground: 25 25% 45%; /* Muted Brown */
     --accent: 20 60% 50%; /* Burnt Orange */
@@ -55,8 +55,8 @@ body {
     --popover-foreground: 56 100% 91%;
     --primary: 25 35% 46%; /* Lighter Coffee Brown */
     --primary-foreground: 25 15% 10%; /* Dark Brown */
-    --secondary: 25 15% 25%; /* Dark Grey Brown */
-    --secondary-foreground: 56 100% 91%;
+    --secondary: 220 3% 20%; /* Updated from 25 15% 25% to dark variant of #dadce0 */
+    --secondary-foreground: 56 100% 91%; /* Kept Cream for contrast */
     --muted: 25 15% 20%; /* Darker Grey Brown */
     --muted-foreground: 56 100% 80%; /* Off-Cream */
     --accent: 20 60% 60%; /* Lighter Burnt Orange */
