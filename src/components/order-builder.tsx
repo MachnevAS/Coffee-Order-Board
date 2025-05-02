@@ -290,8 +290,8 @@ export function OrderBuilder() {
               <CardTitle id={isSheet ? orderSheetTitleId : orderCardTitleId} className={isSheet ? "text-lg" : "text-xl"}>
                   Текущий заказ
               </CardTitle>
-              {/* Close button only for sheet */}
-              {isSheet && <SheetClose asChild><Button variant="ghost" size="icon" className="relative -top-1 -right-1 h-7 w-7"><X className="h-4 w-4"/></Button></SheetClose>}
+              {/* Close button only for sheet - REMOVED, SheetContent provides one */}
+              {/* {isSheet && <SheetClose asChild><Button variant="ghost" size="icon" className="relative -top-1 -right-1 h-7 w-7"><X className="h-4 w-4"/></Button></SheetClose>} */}
           </div>
       </CardHeader>
 
@@ -540,3 +540,5 @@ export function OrderBuilder() {
     </div>
   );
 }
+
+    
