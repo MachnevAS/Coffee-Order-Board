@@ -9,10 +9,20 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import type { Product } from "@/types/product";
 import type { PaymentMethod, Order } from "@/types/order"; // Import Order and PaymentMethod types
-import { MinusCircle, PlusCircle, ShoppingCart, Trash2, CreditCard, Banknote, Smartphone, Search } from "lucide-react"; // Added Search
+import { MinusCircle, PlusCircle, ShoppingCart, Trash2, CreditCard, Banknote, Smartphone, Search, SheetIcon } from "lucide-react"; // Added Search, SheetIcon
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input"; // Added Input
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+  SheetFooter,
+  SheetClose, // Import Sheet components
+} from "@/components/ui/sheet";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 
 interface OrderItem extends Product {
@@ -27,6 +37,7 @@ export function OrderBuilder() {
   const [searchTerm, setSearchTerm] = useState<string>(""); // State for search term
   const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
+  const [isSheetOpen, setIsSheetOpen] = useState(false); // State for mobile sheet
 
   useEffect(() => {
     setIsClient(true);
@@ -153,6 +164,10 @@ export function OrderBuilder() {
         return [...prevOrder, { ...product, quantity: 1 }];
       }
     });
+     // Open sheet on mobile when first item is added
+     if (order.length === 0 && !isSheetOpen) {
+        setIsSheetOpen(true);
+     }
   };
 
     const removeFromOrder = (productId: string) => {
@@ -229,6 +244,7 @@ export function OrderBuilder() {
         description: `Итого: ${totalPrice.toFixed(0)} ₽ (${selectedPaymentMethod}). Ваш заказ сохранен.`,
       });
       clearOrder();
+      setIsSheetOpen(false); // Close sheet on successful checkout
     } catch (error) {
        console.error("Failed to save order:", error);
        toast({
@@ -238,6 +254,108 @@ export function OrderBuilder() {
        });
     }
   };
+
+    // Component to render the order details (used in both Sheet and desktop Card)
+    const OrderDetails = ({ isSheet = false }: { isSheet?: boolean }) => (
+        <>
+          <CardHeader className={cn("p-3 md:p-4", isSheet ? "pb-2" : "pb-2 md:pb-3")}>
+            <CardTitle className={cn("text-base md:text-lg flex items-center justify-between", isSheet ? "text-lg" : "")}>
+              <span>Текущий заказ</span>
+              <ShoppingCart className="h-4 w-4 md:h-5 md:w-5 text-primary" />
+            </CardTitle>
+             {isSheet && <SheetClose className="absolute right-3 top-3" />}
+          </CardHeader>
+
+          <ScrollArea className={cn("px-3 md:px-4", isSheet ? "h-[calc(80vh-250px)]" : "max-h-[105px] lg:max-h-[300px] md:max-h-[400px] lg:block lg:p-3 lg:md:p-4 lg:pt-0")}> {/* Adjust scroll area height for sheet */}
+             {order.length === 0 ? (
+              <p className="text-muted-foreground text-center py-3 md:py-4 text-sm">Ваш заказ пуст.</p>
+             ) : (
+               <ul className="space-y-2 md:space-y-3">
+                {order.map((item) => (
+                   <li key={item.id} className="flex justify-between items-center text-sm gap-2">
+                     <div className="flex-grow overflow-hidden"> {/* Allow name to take space */}
+                       <span className="font-medium block truncate">{item.name} {item.volume && <span className="text-xs text-muted-foreground">({item.volume})</span>}</span>
+                        <span className="font-mono text-xs md:text-sm whitespace-nowrap">{(item.price * item.quantity).toFixed(0)} ₽</span>
+                     </div>
+                     <div className="flex items-center gap-1 md:gap-1.5 flex-shrink-0"> {/* Prevent controls from shrinking */}
+                        <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7" onClick={() => removeFromOrder(item.id)}>
+                          <MinusCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                          <span className="sr-only">Убрать 1 {item.name}</span>
+                       </Button>
+                        <Badge variant="secondary" className="px-1.5 py-0 text-xs md:text-sm font-medium min-w-[24px] justify-center"> {/* Quantity display */}
+                           {item.quantity}
+                        </Badge>
+                        <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7" onClick={() => addToOrder(item)}>
+                           <PlusCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
+                           <span className="sr-only">Добавить 1 {item.name}</span>
+                        </Button>
+                        {/* Add a separate button to remove the item completely */}
+                        <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7 text-destructive/80 hover:text-destructive hover:bg-destructive/10 ml-1" onClick={() => removeEntireItem(item.id)}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                            <span className="sr-only">Удалить {item.name} из заказа</span>
+                        </Button>
+                     </div>
+                   </li>
+                ))}
+              </ul>
+             )}
+          </ScrollArea>
+
+            <Separator className={cn(isSheet ? "mt-2" : "mt-2 lg:mt-0")} />
+
+           <SheetFooter className={cn("flex flex-col gap-2 md:gap-3 p-3 md:p-4 pt-3", isSheet ? "flex-col" : "")}>
+              {order.length > 0 ? (
+                 <>
+                  <div className="flex justify-between w-full font-semibold text-sm md:text-base">
+                     <span>Итого:</span>
+                     <span>{totalPrice.toFixed(0)} ₽</span>
+                  </div>
+
+                  {/* Payment Method Selection */}
+                  <div className="w-full pt-1">
+                     <p className="text-xs text-muted-foreground mb-1.5">Способ оплаты:</p>
+                     <div className="grid grid-cols-3 gap-1.5 md:gap-2">
+                         {(['Наличные', 'Карта', 'Перевод'] as PaymentMethod[]).map((method) => (
+                            <Button
+                             key={method}
+                             variant={selectedPaymentMethod === method ? "default" : "outline"}
+                             onClick={() => setSelectedPaymentMethod(method)}
+                             className={cn(
+                                 "h-auto min-h-[48px] md:min-h-[56px] text-xs flex-col items-center justify-center px-1 py-1.5 leading-tight", // Use h-auto, min-height, adjusted py/px
+                                 selectedPaymentMethod === method ? 'bg-accent hover:bg-accent/90 text-accent-foreground' : ''
+                             )}
+                             size="sm" // Keep sm size for consistent styling base
+                            >
+                              {method === 'Наличные' && <Banknote className="h-3.5 w-3.5 md:h-4 md:w-4 mb-1" />} {/* Increased mb */}
+                              {method === 'Карта' && <CreditCard className="h-3.5 w-3.5 md:h-4 md:w-4 mb-1" />} {/* Increased mb */}
+                              {method === 'Перевод' && <Smartphone className="h-3.5 w-3.5 md:h-4 md:w-4 mb-1" />} {/* Increased mb */}
+                              <span className="text-center block">{method}</span> {/* Added span for better control */}
+                            </Button>
+                         ))}
+                     </div>
+                  </div>
+
+
+                  <div className="flex gap-2 w-full pt-2">
+                     <Button
+                         onClick={handleCheckout}
+                         className="flex-1 h-8 md:h-9 text-xs md:text-sm bg-primary hover:bg-primary/90 px-2" // Adjusted px
+                         disabled={!selectedPaymentMethod} // Disable if no payment method selected
+                     >
+                     Оформить заказ
+                     </Button>
+                     <Button variant="outline" onClick={clearOrder} className="h-8 md:h-9 text-xs md:text-sm px-2"> {/* Adjusted px */}
+                         <Trash2 className="mr-1 h-3 w-3" /> Очистить
+                     </Button>
+                  </div>
+
+                 </>
+              ) : (
+                <p className="text-muted-foreground text-center text-xs md:text-sm w-full">Добавьте товары, чтобы увидеть итоговую сумму.</p>
+              )}
+           </SheetFooter>
+        </>
+    );
 
 
   if (!isClient) {
@@ -274,7 +392,7 @@ export function OrderBuilder() {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8 pb-40 lg:pb-0"> {/* Added padding-bottom for mobile */}
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8 pb-16 lg:pb-0"> {/* Increased pb for floating button */}
       {/* Product List */}
       <div className="lg:col-span-2">
         <h2 className="text-2xl font-semibold mb-4 text-primary">Доступные товары</h2>
@@ -330,142 +448,39 @@ export function OrderBuilder() {
          )}
       </div>
 
-      {/* Current Order */}
-       <div className="lg:col-span-1 fixed bottom-0 left-0 right-0 lg:relative lg:bottom-auto lg:left-auto lg:right-auto border-t lg:border-t-0 bg-background z-20 lg:z-auto shadow-[0_-2px_10px_-3px_rgba(0,0,0,0.1)] lg:shadow-none">
-        <Card className="shadow-none lg:sticky lg:top-4 md:top-8 lg:shadow-md rounded-none lg:rounded-lg">
-          <CardHeader className="p-3 md:p-4 pb-2 md:pb-3"> {/* Reduced bottom padding */}
-            <CardTitle className="text-base md:text-lg flex items-center justify-between">
-              <span>Текущий заказ</span>
-               <ShoppingCart className="h-4 w-4 md:h-5 md:w-5 text-primary" />
-            </CardTitle>
-          </CardHeader>
-           {/* Mobile scrollable area */}
-          <div className="lg:hidden max-h-[105px] overflow-y-auto px-3 md:px-4"> {/* Approx 3 lines height, added padding */}
-             {order.length === 0 ? (
-              <p className="text-muted-foreground text-center py-3 text-sm">Ваш заказ пуст.</p>
-             ) : (
-               <ul className="space-y-2">
-                {order.map((item) => (
-                  <li key={item.id} className="flex justify-between items-center text-sm gap-2">
-                    <div className="flex-grow overflow-hidden">
-                      <span className="font-medium block truncate">{item.name} {item.volume && <span className="text-xs text-muted-foreground">({item.volume})</span>}</span>
-                       <span className="font-mono text-xs whitespace-nowrap">{(item.price * item.quantity).toFixed(0)} ₽</span>
-                    </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                       <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeFromOrder(item.id)}>
-                         <MinusCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
-                         <span className="sr-only">Убрать 1 {item.name}</span>
-                      </Button>
-                       <Badge variant="secondary" className="px-1.5 py-0 text-xs font-medium min-w-[24px] justify-center">
-                          {item.quantity}
-                       </Badge>
-                       <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => addToOrder(item)}>
-                          <PlusCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
-                          <span className="sr-only">Добавить 1 {item.name}</span>
-                       </Button>
-                       <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive/80 hover:text-destructive hover:bg-destructive/10 ml-1" onClick={() => removeEntireItem(item.id)}>
-                           <Trash2 className="h-3.5 w-3.5" />
-                           <span className="sr-only">Удалить {item.name} из заказа</span>
-                       </Button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-             )}
-          </div>
-           {/* Desktop content area (visible only on lg screens) */}
-           <CardContent className="hidden lg:block max-h-[300px] md:max-h-[400px] overflow-y-auto p-3 md:p-4 pt-0">
-            {order.length === 0 ? (
-              <p className="text-muted-foreground text-center py-3 md:py-4 text-sm">Ваш заказ пуст.</p>
-            ) : (
-              <ul className="space-y-2 md:space-y-3">
-                {order.map((item) => (
-                   <li key={item.id} className="flex justify-between items-center text-sm gap-2">
-                    <div className="flex-grow overflow-hidden"> {/* Allow name to take space */}
-                      <span className="font-medium block truncate">{item.name} {item.volume && <span className="text-xs text-muted-foreground">({item.volume})</span>}</span>
-                       <span className="font-mono text-xs md:text-sm whitespace-nowrap">{(item.price * item.quantity).toFixed(0)} ₽</span>
-                    </div>
-                    <div className="flex items-center gap-1 md:gap-1.5 flex-shrink-0"> {/* Prevent controls from shrinking */}
-                       <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7" onClick={() => removeFromOrder(item.id)}>
-                         <MinusCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
-                         <span className="sr-only">Убрать 1 {item.name}</span>
-                      </Button>
-                       <Badge variant="secondary" className="px-1.5 py-0 text-xs md:text-sm font-medium min-w-[24px] justify-center"> {/* Quantity display */}
-                          {item.quantity}
-                       </Badge>
-                       <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7" onClick={() => addToOrder(item)}>
-                          <PlusCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
-                          <span className="sr-only">Добавить 1 {item.name}</span>
-                       </Button>
-                       {/* Add a separate button to remove the item completely */}
-                       <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7 text-destructive/80 hover:text-destructive hover:bg-destructive/10 ml-1" onClick={() => removeEntireItem(item.id)}>
-                           <Trash2 className="h-3.5 w-3.5" />
-                           <span className="sr-only">Удалить {item.name} из заказа</span>
-                       </Button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-           <Separator className="mt-2 lg:mt-0" /> {/* Add margin-top only on mobile */}
-          <CardFooter className="flex flex-col gap-2 md:gap-3 p-3 md:p-4 pt-3">
-             {order.length > 0 && (
-                <>
-                 <div className="flex justify-between w-full font-semibold text-sm md:text-base">
-                    <span>Итого:</span>
-                    <span>{totalPrice.toFixed(0)} ₽</span>
-                 </div>
-
-                 {/* Payment Method Selection */}
-                 <div className="w-full pt-1">
-                    <p className="text-xs text-muted-foreground mb-1.5">Способ оплаты:</p>
-                    <div className="grid grid-cols-3 gap-1.5 md:gap-2">
-                        {(['Наличные', 'Карта', 'Перевод'] as PaymentMethod[]).map((method) => (
-                           <Button
-                            key={method}
-                            variant={selectedPaymentMethod === method ? "default" : "outline"}
-                            onClick={() => setSelectedPaymentMethod(method)}
-                            className={cn(
-                                "h-auto min-h-[48px] md:min-h-[56px] text-xs flex-col items-center justify-center px-1 py-1.5 leading-tight", // Use h-auto, min-height, adjusted py/px
-                                selectedPaymentMethod === method ? 'bg-accent hover:bg-accent/90 text-accent-foreground' : ''
-                            )}
-                            size="sm" // Keep sm size for consistent styling base
-                           >
-                             {method === 'Наличные' && <Banknote className="h-3.5 w-3.5 md:h-4 md:w-4 mb-1" />} {/* Increased mb */}
-                             {method === 'Карта' && <CreditCard className="h-3.5 w-3.5 md:h-4 md:w-4 mb-1" />} {/* Increased mb */}
-                             {method === 'Перевод' && <Smartphone className="h-3.5 w-3.5 md:h-4 md:w-4 mb-1" />} {/* Increased mb */}
-                             <span className="text-center block">{method}</span> {/* Added span for better control */}
-                           </Button>
-                        ))}
-                    </div>
-                 </div>
+       {/* Mobile Order Sheet Trigger */}
+        <div className="lg:hidden fixed bottom-4 right-4 z-30">
+            <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
+              <SheetTrigger asChild>
+                  <Button size="icon" className="rounded-full w-14 h-14 shadow-lg">
+                    <ShoppingCart className="h-6 w-6" />
+                     {order.length > 0 && (
+                        <Badge
+                          variant="destructive"
+                          className="absolute -top-1 -right-1 h-5 w-5 justify-center p-0"
+                        >
+                          {order.reduce((sum, item) => sum + item.quantity, 0)}
+                        </Badge>
+                      )}
+                    <span className="sr-only">Открыть корзину</span>
+                  </Button>
+              </SheetTrigger>
+              <SheetContent side="bottom" className="rounded-t-lg h-[80vh] flex flex-col p-0"> {/* Adjust height and padding */}
+                  <OrderDetails isSheet={true} />
+              </SheetContent>
+            </Sheet>
+        </div>
 
 
-                 <div className="flex gap-2 w-full pt-2">
-                    <Button
-                        onClick={handleCheckout}
-                        className="flex-1 h-8 md:h-9 text-xs md:text-sm bg-primary hover:bg-primary/90 px-2" // Adjusted px
-                        disabled={!selectedPaymentMethod} // Disable if no payment method selected
-                    >
-                    Оформить заказ
-                    </Button>
-                    <Button variant="outline" onClick={clearOrder} className="h-8 md:h-9 text-xs md:text-sm px-2"> {/* Adjusted px */}
-                        <Trash2 className="mr-1 h-3 w-3" /> Очистить
-                    </Button>
-                 </div>
-
-                </>
-             )}
-              {order.length === 0 && !isClient && ( // Show loading text during SSR if order is empty
-                 <p className="text-muted-foreground text-center text-xs md:text-sm w-full">Загрузка...</p>
-              )}
-               {order.length === 0 && isClient && ( // Show empty message only on client if order is truly empty
-                 <p className="text-muted-foreground text-center text-xs md:text-sm w-full">Добавьте товары, чтобы увидеть итоговую сумму.</p>
-              )}
-          </CardFooter>
+       {/* Desktop Current Order */}
+       <div className="hidden lg:block lg:col-span-1">
+        <Card className="shadow-md lg:sticky lg:top-4 md:top-8">
+           <OrderDetails />
         </Card>
-      </div>
+       </div>
+
     </div>
   );
 }
+
+    
