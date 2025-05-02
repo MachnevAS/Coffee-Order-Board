@@ -31,7 +31,7 @@ import {
   SheetClose,
 } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
+import { VisuallyHidden } from '@radix-ui/react-visually-hidden'; // Import VisuallyHidden
 import { ProductCard } from './product-card';
 import { LOCAL_STORAGE_PRODUCTS_KEY, LOCAL_STORAGE_ORDERS_KEY, LOCAL_STORAGE_ORDER_BUILDER_SORT_KEY } from '@/lib/constants';
 
@@ -124,14 +124,14 @@ const OrderDetails: React.FC<{
   <>
     {/* Content Area with Scroll */}
     <CardContent className={cn(
-      "p-0 flex-grow overflow-hidden min-h-0",
-      isSheet ? "px-3 md:px-4" : "px-4 pt-0"
+      "p-0 flex-grow overflow-hidden min-h-0", // Added min-h-0
+      isSheet ? "px-3 md:px-4" : "px-4 pt-0" // No pt-0 for card view, use CardHeader padding
     )}>
-       <ScrollArea className="h-full pr-2" type="auto"> {/* Changed type to auto */}
+       <ScrollArea className={cn("h-full pr-2", isSheet ? "overflow-y-auto" : "lg:max-h-[calc(100vh-20rem)]")} type="auto"> {/* Added conditional max-height for desktop */}
          {order.length === 0 ? (
            <p className="text-muted-foreground text-center py-3 md:py-4 text-sm">Ваш заказ пуст.</p>
          ) : (
-           <ul className="space-y-1 md:space-y-1.5 pt-1 pb-2 md:pb-3">
+           <ul className="space-y-1 md:space-y-1.5 pt-1 pb-2 md:pb-3"> {/* Adjusted padding */}
              {order.map((item, index) => (
                <li
                  key={item.id}
@@ -142,14 +142,16 @@ const OrderDetails: React.FC<{
                >
                  <div className="flex-grow overflow-hidden mr-1">
                    <span className="font-medium block truncate">{item.name} {item.volume && <span className="text-xs text-muted-foreground">({item.volume})</span>}</span>
-                   <span className=" text-xs md:text-sm whitespace-nowrap">{(item.price * item.quantity).toFixed(0)} ₽</span>
+                   {/* Use font-sans for currency */}
+                   <span className=" text-xs md:text-sm whitespace-nowrap font-sans">{(item.price * item.quantity).toFixed(0)} ₽</span>
                  </div>
                  <div className="flex items-center gap-1 md:gap-1 flex-shrink-0">
                    <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7" onClick={() => onRemoveFromOrder(item.id)}>
                      <MinusCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
                      <span className="sr-only">Убрать 1 {item.name}</span>
                    </Button>
-                   <Badge variant="secondary" className="px-1.5 py-0.5 text-xs md:text-sm font-medium min-w-[24px] justify-center">
+                   {/* Use font-sans for quantity */}
+                   <Badge variant="secondary" className="px-1.5 py-0.5 text-xs md:text-sm font-medium min-w-[24px] justify-center font-sans">
                      {item.quantity}
                    </Badge>
                    <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7" onClick={() => onAddToOrder(item)}>
@@ -171,7 +173,7 @@ const OrderDetails: React.FC<{
     {/* Footer */}
     <CardFooter className={cn(
       "flex flex-col gap-2 md:gap-3 p-3 md:p-4 pt-0 flex-shrink-0",
-      isSheet ? "border-t pt-3" : "pt-2"
+      isSheet ? "border-t pt-3" : "pt-2" // Add pt-2 for card view
     )}>
       {!isSheet && order.length > 0 && <Separator className="mb-3" />}
 
@@ -179,7 +181,8 @@ const OrderDetails: React.FC<{
         <>
           <div className="flex justify-between w-full font-semibold text-sm md:text-base">
             <span>Итого:</span>
-            <span>{totalPrice.toFixed(0)} ₽</span>
+            {/* Use font-sans for currency */}
+            <span className="font-sans">{totalPrice.toFixed(0)} ₽</span>
           </div>
 
           <div className="w-full pt-1">
@@ -508,7 +511,7 @@ export function OrderBuilder() {
           <div className="flex gap-2 mb-4">
             <div className="relative flex-grow">
               <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Поиск товаров..." className="pl-8 pr-8 h-9" disabled />
+              <Input placeholder="Поиск товаров..." value="" className="pl-8 pr-8 h-9" disabled /> {/* Pass empty value */}
             </div>
             <Button variant="outline" size="sm" className="h-9 px-3" disabled>
               <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" />
@@ -535,7 +538,7 @@ export function OrderBuilder() {
 
   // --- Main Render Logic (Client-Side) ---
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8 pb-16 lg:pb-0">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8 pb-16 lg:pb-0"> {/* Increased pb for floating button */}
       {/* Product List */}
       <div className="lg:col-span-2">
         <h2 className="text-2xl font-semibold mb-4 text-primary">Доступные товары</h2>
@@ -620,7 +623,8 @@ export function OrderBuilder() {
                 <span>Корзина</span>
               </div>
               {totalPrice > 0 && (
-                <span className="font-semibold">{totalPrice.toFixed(0)} ₽</span>
+                // Use font-sans for currency
+                <span className="font-semibold font-sans">{totalPrice.toFixed(0)} ₽</span>
               )}
             </Button>
           </SheetTrigger>
@@ -630,7 +634,9 @@ export function OrderBuilder() {
             aria-labelledby={orderSheetTitleId}
           >
             <SheetHeader className="p-3 md:p-4 border-b text-left">
-              <SheetTitle id={orderSheetTitleId}>Текущий заказ</SheetTitle>
+              {/* Use visually hidden title for accessibility */}
+               <VisuallyHidden><SheetTitle id={orderSheetTitleId}>Текущий заказ</SheetTitle></VisuallyHidden>
+               <p className="text-lg font-semibold text-foreground" aria-hidden="true">Текущий заказ</p>
             </SheetHeader>
             <OrderDetails
               isSheet={true}
@@ -655,8 +661,8 @@ export function OrderBuilder() {
 
       {/* Desktop Current Order */}
       <div className="hidden lg:block lg:col-span-1">
-        <Card className="shadow-md lg:sticky lg:top-4 md:top-8 max-h-[calc(100vh-4rem)] flex flex-col">
-          <CardHeader className="p-3 md:p-4 pb-3 flex-shrink-0" aria-labelledby={orderCardTitleId}>
+         <Card className="shadow-md lg:sticky lg:top-4 md:top-8 max-h-[calc(100vh-4rem)] flex flex-col"> {/* Keep max height */}
+          <CardHeader className="p-3 md:p-4 pb-3 flex-shrink-0" aria-labelledby={orderCardTitleId}> {/* Ensure header shrinks */}
             <CardTitle id={orderCardTitleId} className="text-xl">Текущий заказ</CardTitle>
           </CardHeader>
           <OrderDetails

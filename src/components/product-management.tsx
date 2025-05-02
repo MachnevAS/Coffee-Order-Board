@@ -97,7 +97,7 @@ const AddProductForm: React.FC<{
       <div className="space-y-4 flex-grow">
         <FormField control={form.control} name="name" render={({ field }) => ( <FormItem><FormLabel>Название</FormLabel><FormControl><Input placeholder="например, Латте" {...field} /></FormControl><FormMessage /></FormItem> )} />
         <FormField control={form.control} name="volume" render={({ field }) => ( <FormItem><FormLabel>Объём (необязательно)</FormLabel><FormControl><Input placeholder="например, 0,3 л" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem> )} />
-        <FormField control={form.control} name="price" render={({ field }) => ( <FormItem><FormLabel>Цена (₽)</FormLabel><FormControl><Input type="text" inputMode="numeric" pattern="[0-9]*([\.,][0-9]+)?" placeholder="например, 165" {...field} /></FormControl><FormMessage /></FormItem> )} />
+        <FormField control={form.control} name="price" render={({ field }) => ( <FormItem><FormLabel>Цена (₽)</FormLabel><FormControl><Input type="text" inputMode="numeric" pattern="[0-9]*([\.,][0-9]+)?" placeholder="например, 165" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem> )} />
         <FormField control={form.control} name="imageUrl" render={({ field }) => ( <FormItem><FormLabel>URL изображения (необязательно)</FormLabel><FormControl><Input placeholder="https://..." {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem> )} />
         <FormField control={form.control} name="dataAiHint" render={({ field }) => ( <FormItem><FormLabel>Подсказка изображения (необязательно)</FormLabel><FormControl><Input placeholder="например, латте арт" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem> )} />
       </div>
@@ -164,11 +164,11 @@ export function ProductManagement() {
   const { toast } = useToast();
   const form = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
-    defaultValues: { name: "", volume: "", price: 0, imageUrl: "", dataAiHint: "" },
+    defaultValues: { name: "", volume: "", price: undefined, imageUrl: "", dataAiHint: "" }, // Set price default to undefined
   });
   const editForm = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
-    defaultValues: { name: "", volume: "", price: 0, imageUrl: "", dataAiHint: "" },
+    defaultValues: { name: "", volume: "", price: undefined, imageUrl: "", dataAiHint: "" }, // Set price default to undefined
   });
 
   // --- Effects ---
@@ -330,7 +330,7 @@ export function ProductManagement() {
     setTimeout(() => {
       toast({ title: "Товар добавлен", description: `${data.name} ${data.volume || ''} успешно добавлен.` });
     }, 0);
-    form.reset();
+    form.reset({ name: "", volume: "", price: undefined, imageUrl: "", dataAiHint: "" }); // Reset with undefined price
   }, [isClient, toast, form]);
 
   const removeProduct = useCallback((id: string) => {
@@ -366,7 +366,7 @@ export function ProductManagement() {
 
   const cancelEditing = useCallback(() => {
     setEditingProductId(null);
-    editForm.reset();
+    editForm.reset({ name: "", volume: "", price: undefined, imageUrl: "", dataAiHint: "" }); // Reset with undefined price
   }, [editForm]);
 
   const onEditSubmit = useCallback((data: ProductFormData) => {
@@ -430,11 +430,11 @@ export function ProductManagement() {
           <CardContent><p className="text-muted-foreground">Загрузка формы...</p></CardContent>
         </Card>
         <Card className="shadow-lg">
-          <CardHeader><CardTitle>Существующие товары</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Существующие товары (0)</CardTitle></CardHeader> {/* Show 0 initially */}
           <CardContent>
             <div className="relative mb-4">
               <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Поиск товаров..." className="pl-8 h-9" disabled />
+              <Input placeholder="Поиск товаров..." value="" className="pl-8 h-9" disabled /> {/* Pass empty value */}
             </div>
             <p className="text-muted-foreground">Загрузка списка товаров...</p>
           </CardContent>

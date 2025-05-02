@@ -26,7 +26,7 @@ import type { UseFormReturn } from "react-hook-form";
 type ProductFormData = {
   name: string;
   volume?: string;
-  price: number;
+  price: number | undefined; // Allow undefined
   imageUrl?: string;
   dataAiHint?: string;
 };
@@ -62,7 +62,7 @@ export function ProductListItem({
           <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-3">
              <FormField control={editForm.control} name="name" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Название</FormLabel><FormControl><Input {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
              <FormField control={editForm.control} name="volume" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Объём</FormLabel><FormControl><Input {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
-             <FormField control={editForm.control} name="price" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Цена (₽)</FormLabel><FormControl><Input type="text" inputMode="numeric" pattern="[0-9]*([\.,][0-9]+)?" {...field} value={field.value ?? 0} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
+             <FormField control={editForm.control} name="price" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Цена (₽)</FormLabel><FormControl><Input type="text" inputMode="numeric" pattern="[0-9]*([\.,][0-9]+)?" {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
              <FormField control={editForm.control} name="imageUrl" render={({ field }) => ( <FormItem><FormLabel className="text-xs">URL изображения</FormLabel><FormControl><Input {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
              <FormField control={editForm.control} name="dataAiHint" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Подсказка ИИ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
              <div className="flex justify-end gap-2 pt-2">
@@ -94,7 +94,8 @@ export function ProductListItem({
             <div className="overflow-hidden flex-grow">
                 <p className="font-medium truncate text-sm md:text-base">{product.name}</p>
                 {(product.volume || product.price !== undefined) && (
-                    <p className="text-xs md:text-sm text-muted-foreground">
+                    // Use font-sans for price/currency
+                    <p className="text-xs md:text-sm text-muted-foreground font-sans">
                         {product.volume && <span>{product.volume} / </span>}
                         {product.price.toFixed(0)} ₽
                     </p>
@@ -136,5 +137,3 @@ export function ProductListItem({
     </li>
   );
 }
-
-    
