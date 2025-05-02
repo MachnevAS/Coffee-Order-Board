@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,9 +9,10 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import type { Product } from "@/types/product";
 import type { PaymentMethod, Order } from "@/types/order"; // Import Order and PaymentMethod types
-import { MinusCircle, PlusCircle, ShoppingCart, Trash2, CreditCard, Banknote, Smartphone } from "lucide-react";
+import { MinusCircle, PlusCircle, ShoppingCart, Trash2, CreditCard, Banknote, Smartphone, Search } from "lucide-react"; // Added Search
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input"; // Added Input
 
 
 interface OrderItem extends Product {
@@ -23,6 +24,7 @@ export function OrderBuilder() {
   const [order, setOrder] = useState<OrderItem[]>([]);
   const [totalPrice, setTotalPrice] = useState<number>(0);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
+  const [searchTerm, setSearchTerm] = useState<string>(""); // State for search term
   const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
 
@@ -128,6 +130,17 @@ export function OrderBuilder() {
     };
   }, [isClient]); // Rerun only if isClient changes
 
+  // Filter products based on search term
+  const filteredProducts = useMemo(() => {
+    if (!searchTerm) {
+      return products;
+    }
+    const lowerCaseSearchTerm = searchTerm.toLowerCase();
+    return products.filter(product =>
+      product.name.toLowerCase().includes(lowerCaseSearchTerm)
+    );
+  }, [products, searchTerm]);
+
 
   const addToOrder = (product: Product) => {
     setOrder((prevOrder) => {
@@ -232,6 +245,14 @@ export function OrderBuilder() {
          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
              <div className="lg:col-span-2">
                 <h2 className="text-2xl font-semibold mb-4 text-primary">Доступные товары</h2>
+                 <div className="relative mb-4">
+                    <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                        placeholder="Поиск товаров..."
+                        className="pl-8 h-9"
+                        disabled // Disable while loading
+                    />
+                 </div>
                 <p className="text-muted-foreground">Загрузка товаров...</p>
              </div>
              <div className="lg:col-span-1">
@@ -256,11 +277,26 @@ export function OrderBuilder() {
       {/* Product List */}
       <div className="lg:col-span-2">
         <h2 className="text-2xl font-semibold mb-4 text-primary">Доступные товары</h2>
+
+         {/* Search Input */}
+         <div className="relative mb-4">
+           <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+           <Input
+             placeholder="Поиск товаров..."
+             value={searchTerm}
+             onChange={(e) => setSearchTerm(e.target.value)}
+             className="pl-8 h-9" // Adjusted height and padding
+           />
+         </div>
+
+
         {products.length === 0 ? (
            <p className="text-muted-foreground">Товары отсутствуют. Добавьте их вручную или загрузите начальный список во вкладке "Управление товарами".</p>
+        ) : filteredProducts.length === 0 ? (
+           <p className="text-muted-foreground">Товары по вашему запросу не найдены.</p>
         ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 gap-2 md:gap-3">
-          {products.map((product) => (
+          {filteredProducts.map((product) => (
             <Card key={product.id} className="overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-150 flex flex-col text-xs md:text-sm">
               <CardHeader className="p-0">
                 <div className="relative h-20 w-full">

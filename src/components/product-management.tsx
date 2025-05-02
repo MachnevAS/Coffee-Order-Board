@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import type { Product } from "@/types/product";
-import { PlusCircle, Edit, Trash2, Save, X, FilePlus2 } from "lucide-react"; // Added icons
+import { PlusCircle, Edit, Trash2, Save, X, FilePlus2, Search } from "lucide-react"; // Added icons, including Search
 import Image from "next/image";
 import { getRawProductData } from "@/lib/product-defaults"; // Import defaults and raw data getter
 import {
@@ -46,6 +46,7 @@ type ProductFormData = z.infer<typeof productSchema>;
 
 export function ProductManagement() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [searchTerm, setSearchTerm] = useState<string>(""); // State for search term
   const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
@@ -107,17 +108,22 @@ export function ProductManagement() {
     } catch (lsError) {
         console.error("ProductManagement: Error accessing localStorage. Initializing as empty.", lsError);
         loadedProducts = []; // Initialize as empty on localStorage access error
-         toast({
-            title: "Ошибка LocalStorage",
-            description: "Не удалось загрузить товары. Список инициализирован как пустой.",
-            variant: "destructive",
-         });
+         // Use setTimeout to ensure toast call happens after the initial render cycle
+         setTimeout(() => {
+             toast({
+                title: "Ошибка LocalStorage",
+                description: "Не удалось загрузить товары. Список инициализирован как пустой.",
+                variant: "destructive",
+             });
+         }, 0);
     }
 
-    setProducts(loadedProducts);
-    console.log("ProductManagement: setProducts called with:", loadedProducts.length, "products");
+     if (loadedProducts) { // Check if loadedProducts is not null
+       setProducts(loadedProducts);
+       console.log("ProductManagement: setProducts called with:", loadedProducts.length, "products");
+     }
 
-   }, []); // Run only once on mount
+   }, [toast]); // Add toast dependency
 
 
    // Persist products to localStorage whenever they change
@@ -141,14 +147,29 @@ export function ProductManagement() {
             }
         } catch (e) {
             console.error("ProductManagement: Failed to save products to localStorage", e);
-             toast({
-               title: "Ошибка сохранения",
-               description: "Не удалось сохранить список товаров.",
-               variant: "destructive",
-             });
+             // Use setTimeout to ensure toast call happens after the current render cycle
+             setTimeout(() => {
+                 toast({
+                   title: "Ошибка сохранения",
+                   description: "Не удалось сохранить список товаров.",
+                   variant: "destructive",
+                 });
+             }, 0);
         }
     }
    }, [products, isClient, toast]);
+
+
+  // Filter products based on search term
+  const filteredProducts = useMemo(() => {
+    if (!searchTerm) {
+      return products;
+    }
+    const lowerCaseSearchTerm = searchTerm.toLowerCase();
+    return products.filter(product =>
+      product.name.toLowerCase().includes(lowerCaseSearchTerm)
+    );
+  }, [products, searchTerm]);
 
 
   const onSubmit = (data: ProductFormData) => {
@@ -165,21 +186,27 @@ export function ProductManagement() {
 
     setProducts((prevProducts) => [...prevProducts, newProduct]);
 
-    toast({
-      title: "Товар добавлен",
-      description: `${data.name} ${data.volume || ''} успешно добавлен.`,
-    });
+     // Use setTimeout to ensure toast call happens after the current render cycle
+     setTimeout(() => {
+         toast({
+           title: "Товар добавлен",
+           description: `${data.name} ${data.volume || ''} успешно добавлен.`,
+         });
+     }, 0);
     form.reset();
   };
 
    const removeProduct = (id: string) => {
     if (!isClient) return;
     setProducts((prevProducts) => prevProducts.filter((p) => p.id !== id));
-    toast({
-      title: "Товар удален",
-      description: "Товар был удален.",
-      variant: "destructive",
-    });
+     // Use setTimeout to ensure toast call happens after the current render cycle
+     setTimeout(() => {
+         toast({
+           title: "Товар удален",
+           description: "Товар был удален.",
+           variant: "destructive",
+         });
+     }, 0);
     if (editingProductId === id) {
         setEditingProductId(null);
     }
@@ -219,10 +246,13 @@ export function ProductManagement() {
       )
     );
 
-    toast({
-      title: "Товар обновлен",
-      description: `${data.name} ${data.volume || ''} успешно обновлен.`,
-    });
+    // Use setTimeout to ensure toast call happens after the current render cycle
+    setTimeout(() => {
+        toast({
+          title: "Товар обновлен",
+          description: `${data.name} ${data.volume || ''} успешно обновлен.`,
+        });
+    }, 0);
     cancelEditing();
   };
 
@@ -288,6 +318,14 @@ export function ProductManagement() {
                      <CardTitle>Существующие товары</CardTitle>
                  </CardHeader>
                  <CardContent>
+                     <div className="relative mb-4">
+                         <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                         <Input
+                             placeholder="Поиск товаров..."
+                             className="pl-8 h-9"
+                             disabled
+                         />
+                     </div>
                      <p className="text-muted-foreground">Загрузка списка товаров...</p>
                  </CardContent>
              </Card>
@@ -321,19 +359,32 @@ export function ProductManagement() {
 
        {/* Existing Products List */}
        <Card className="shadow-md flex flex-col h-full"> {/* Ensure card takes full height */}
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-row items-center justify-between pb-4"> {/* Added pb-4 */}
           <CardTitle className="text-lg md:text-xl">Существующие товары</CardTitle>
            <Button variant="outline" size="sm" onClick={loadRawProducts} className="text-xs px-2 h-8"> {/* Adjusted text size and padding */}
              <FilePlus2 className="h-4 w-4 mr-1" /> Загрузить начальные
            </Button>
         </CardHeader>
         <CardContent className="flex-grow overflow-hidden p-0"> {/* Remove padding, let ScrollArea handle it */}
-          <ScrollArea className="h-[500px] md:h-[600px] p-6 pt-0"> {/* Adjust height and add padding */}
+            {/* Search Input for Existing Products */}
+            <div className="relative px-6 pb-4"> {/* Added padding */}
+              <Search className="absolute left-8 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /> {/* Adjusted left padding */}
+              <Input
+                placeholder="Поиск товаров..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-8 h-9" // Adjusted height and padding
+              />
+            </div>
+
+          <ScrollArea className="h-[440px] md:h-[540px] p-6 pt-0"> {/* Adjust height and add padding */}
             {products.length === 0 ? (
               <p className="text-muted-foreground text-center py-4">Товары еще не добавлены.</p>
+            ) : filteredProducts.length === 0 ? (
+               <p className="text-muted-foreground text-center py-4">Товары по вашему запросу не найдены.</p>
             ) : (
               <ul className="space-y-3">
-                {products.map((product) => (
+                {filteredProducts.map((product) => (
                   <li key={product.id} className="flex flex-col p-3 border rounded-md bg-card transition-colors duration-150">
                     {editingProductId === product.id ? (
                       <Form {...editForm}>
@@ -417,4 +468,3 @@ export function ProductManagement() {
     </div>
   );
 }
-
