@@ -256,7 +256,8 @@ export function OrderBuilder() {
                 <p className="text-muted-foreground">Загрузка товаров...</p>
              </div>
              <div className="lg:col-span-1">
-                 <Card className="sticky top-8 shadow-lg">
+                 {/* Placeholder for the order card during SSR */}
+                 <Card className="shadow-lg lg:sticky lg:top-8">
                     <CardHeader>
                        <CardTitle className="flex items-center justify-between">
                         <span>Текущий заказ</span>
@@ -273,7 +274,7 @@ export function OrderBuilder() {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8 pb-40 lg:pb-0"> {/* Added padding-bottom for mobile */}
       {/* Product List */}
       <div className="lg:col-span-2">
         <h2 className="text-2xl font-semibold mb-4 text-primary">Доступные товары</h2>
@@ -330,21 +331,56 @@ export function OrderBuilder() {
       </div>
 
       {/* Current Order */}
-      <div className="lg:col-span-1">
-        <Card className="sticky top-4 md:top-8 shadow-md">
-          <CardHeader className="p-3 md:p-4">
+       <div className="lg:col-span-1 fixed bottom-0 left-0 right-0 lg:relative lg:bottom-auto lg:left-auto lg:right-auto border-t lg:border-t-0 bg-background z-20 lg:z-auto shadow-[0_-2px_10px_-3px_rgba(0,0,0,0.1)] lg:shadow-none">
+        <Card className="shadow-none lg:sticky lg:top-4 md:top-8 lg:shadow-md rounded-none lg:rounded-lg">
+          <CardHeader className="p-3 md:p-4 pb-2 md:pb-3"> {/* Reduced bottom padding */}
             <CardTitle className="text-base md:text-lg flex items-center justify-between">
               <span>Текущий заказ</span>
                <ShoppingCart className="h-4 w-4 md:h-5 md:w-5 text-primary" />
             </CardTitle>
           </CardHeader>
-          <CardContent className="max-h-[300px] md:max-h-[400px] overflow-y-auto p-3 md:p-4 pt-0">
+           {/* Mobile scrollable area */}
+          <div className="lg:hidden max-h-[105px] overflow-y-auto px-3 md:px-4"> {/* Approx 3 lines height, added padding */}
+             {order.length === 0 ? (
+              <p className="text-muted-foreground text-center py-3 text-sm">Ваш заказ пуст.</p>
+             ) : (
+               <ul className="space-y-2">
+                {order.map((item) => (
+                  <li key={item.id} className="flex justify-between items-center text-sm gap-2">
+                    <div className="flex-grow overflow-hidden">
+                      <span className="font-medium block truncate">{item.name} {item.volume && <span className="text-xs text-muted-foreground">({item.volume})</span>}</span>
+                       <span className="font-mono text-xs whitespace-nowrap">{(item.price * item.quantity).toFixed(0)} ₽</span>
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                       <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeFromOrder(item.id)}>
+                         <MinusCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                         <span className="sr-only">Убрать 1 {item.name}</span>
+                      </Button>
+                       <Badge variant="secondary" className="px-1.5 py-0 text-xs font-medium min-w-[24px] justify-center">
+                          {item.quantity}
+                       </Badge>
+                       <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => addToOrder(item)}>
+                          <PlusCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
+                          <span className="sr-only">Добавить 1 {item.name}</span>
+                       </Button>
+                       <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive/80 hover:text-destructive hover:bg-destructive/10 ml-1" onClick={() => removeEntireItem(item.id)}>
+                           <Trash2 className="h-3.5 w-3.5" />
+                           <span className="sr-only">Удалить {item.name} из заказа</span>
+                       </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+             )}
+          </div>
+           {/* Desktop content area (visible only on lg screens) */}
+           <CardContent className="hidden lg:block max-h-[300px] md:max-h-[400px] overflow-y-auto p-3 md:p-4 pt-0">
             {order.length === 0 ? (
               <p className="text-muted-foreground text-center py-3 md:py-4 text-sm">Ваш заказ пуст.</p>
             ) : (
               <ul className="space-y-2 md:space-y-3">
                 {order.map((item) => (
-                  <li key={item.id} className="flex justify-between items-center text-sm gap-2">
+                   <li key={item.id} className="flex justify-between items-center text-sm gap-2">
                     <div className="flex-grow overflow-hidden"> {/* Allow name to take space */}
                       <span className="font-medium block truncate">{item.name} {item.volume && <span className="text-xs text-muted-foreground">({item.volume})</span>}</span>
                        <span className="font-mono text-xs md:text-sm whitespace-nowrap">{(item.price * item.quantity).toFixed(0)} ₽</span>
@@ -372,7 +408,7 @@ export function OrderBuilder() {
               </ul>
             )}
           </CardContent>
-          <Separator />
+           <Separator className="mt-2 lg:mt-0" /> {/* Add margin-top only on mobile */}
           <CardFooter className="flex flex-col gap-2 md:gap-3 p-3 md:p-4 pt-3">
              {order.length > 0 && (
                 <>
@@ -421,7 +457,10 @@ export function OrderBuilder() {
 
                 </>
              )}
-              {order.length === 0 && (
+              {order.length === 0 && !isClient && ( // Show loading text during SSR if order is empty
+                 <p className="text-muted-foreground text-center text-xs md:text-sm w-full">Загрузка...</p>
+              )}
+               {order.length === 0 && isClient && ( // Show empty message only on client if order is truly empty
                  <p className="text-muted-foreground text-center text-xs md:text-sm w-full">Добавьте товары, чтобы увидеть итоговую сумму.</p>
               )}
           </CardFooter>
