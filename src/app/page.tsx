@@ -14,10 +14,10 @@ export default function Home() {
         </h1>
       </header>
       <Tabs defaultValue="order">
-        <TabsList className="grid w-full grid-cols-3 mx-auto mb-6"> {/* Removed max-w-lg */}
-          <TabsTrigger value="order" className="text-xs sm:text-sm px-2 sm:px-3">Конструктор заказов</TabsTrigger> {/* Adjusted text size and padding */}
-          <TabsTrigger value="manage" className="text-xs sm:text-sm px-2 sm:px-3">Управление товарами</TabsTrigger> {/* Adjusted text size and padding */}
-          <TabsTrigger value="history" className="text-xs sm:text-sm px-2 sm:px-3">История продаж</TabsTrigger> {/* Adjusted text size and padding */}
+        <TabsList className="grid w-full grid-cols-3 mx-auto mb-6 h-auto min-h-10 items-stretch"> {/* Added h-auto, min-h-10, items-stretch */}
+          <TabsTrigger value="order" className="text-xs sm:text-sm px-1 py-1 sm:px-3 sm:py-1.5 whitespace-normal h-full">Конструктор заказов</TabsTrigger> {/* Adjusted text size and padding, added whitespace-normal, h-full */}
+          <TabsTrigger value="manage" className="text-xs sm:text-sm px-1 py-1 sm:px-3 sm:py-1.5 whitespace-normal h-full">Управление товарами</TabsTrigger> {/* Adjusted text size and padding, added whitespace-normal, h-full */}
+          <TabsTrigger value="history" className="text-xs sm:text-sm px-1 py-1 sm:px-3 sm:py-1.5 whitespace-normal h-full">История продаж</TabsTrigger> {/* Adjusted text size and padding, added whitespace-normal, h-full */}
         </TabsList>
         <TabsContent value="order">
           <OrderBuilder />
