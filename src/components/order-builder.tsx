@@ -258,43 +258,41 @@ export function OrderBuilder() {
     // Component to render the order details (used in both Sheet and desktop Card)
     const OrderDetails = ({ isSheet = false }: { isSheet?: boolean }) => (
         <>
-          <CardHeader className={cn("p-3 md:p-4", isSheet ? "pb-2" : "pb-3")}> {/* Adjusted desktop padding */}
+          <CardHeader className={cn("p-3 md:p-4", isSheet ? "pb-2 flex-shrink-0" : "pb-3")}> {/* Added flex-shrink-0 for sheet header */}
             <CardTitle className={cn("text-base md:text-lg flex items-center justify-between", isSheet ? "text-lg" : "text-xl")}> {/* Adjusted desktop size */}
               <span>Текущий заказ</span>
-              {/* Shopping cart icon removed from here */}
              </CardTitle>
              {isSheet && <SheetClose className="absolute right-3 top-3" />}
           </CardHeader>
 
-          <CardContent className={cn("p-0", isSheet ? "px-3 md:px-4" : "p-4 pt-0")}> {/* Desktop gets padding here */}
+          <CardContent className={cn("p-0 flex-grow overflow-hidden", isSheet ? "px-3 md:px-4" : "p-4 pt-0")}> {/* Desktop gets padding here, sheet gets flex-grow */}
               <ScrollArea className={cn(
                 isSheet
-                  ? "h-[calc(80vh-250px)]" // Mobile sheet scroll height
-                  : "max-h-[400px]" // Desktop scroll height - Increased for more visibility
+                  ? "h-full" // Mobile sheet scroll takes remaining height
+                  : "max-h-[calc(100vh-280px)]" // Desktop scroll height - Limited by viewport minus other elements roughly
               )}>
                  {order.length === 0 ? (
                   <p className="text-muted-foreground text-center py-3 md:py-4 text-sm">Ваш заказ пуст.</p>
                  ) : (
                    <ul className={cn("space-y-2 md:space-y-3", isSheet ? "" : "pr-3")}> {/* Desktop gets padding right on list */}
                     {order.map((item) => (
-                       <li key={item.id} className="flex justify-between items-center text-sm gap-2">
-                         <div className="flex-grow overflow-hidden"> {/* Allow name to take space */}
+                       <li key={item.id} className="flex justify-between items-center text-sm gap-2 py-1"> {/* Added py-1 */}
+                         <div className="flex-grow overflow-hidden mr-1"> {/* Allow name to take space, add margin */}
                            <span className="font-medium block truncate">{item.name} {item.volume && <span className="text-xs text-muted-foreground">({item.volume})</span>}</span>
                             <span className="font-mono text-xs md:text-sm whitespace-nowrap">{(item.price * item.quantity).toFixed(0)} ₽</span>
                          </div>
-                         <div className="flex items-center gap-1 md:gap-1.5 flex-shrink-0"> {/* Prevent controls from shrinking */}
+                         <div className="flex items-center gap-1 md:gap-1 flex-shrink-0"> {/* Reduced desktop gap */}
                             <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7" onClick={() => removeFromOrder(item.id)}>
                               <MinusCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
                               <span className="sr-only">Убрать 1 {item.name}</span>
                            </Button>
-                            <Badge variant="secondary" className="px-1.5 py-0 text-xs md:text-sm font-medium min-w-[24px] justify-center"> {/* Quantity display */}
+                            <Badge variant="secondary" className="px-1.5 py-0.5 text-xs md:text-sm font-medium min-w-[24px] justify-center"> {/* Quantity display */}
                                {item.quantity}
                             </Badge>
                             <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7" onClick={() => addToOrder(item)}>
                                <PlusCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
                                <span className="sr-only">Добавить 1 {item.name}</span>
                             </Button>
-                            {/* Add a separate button to remove the item completely */}
                             <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7 text-destructive/80 hover:text-destructive hover:bg-destructive/10 ml-1" onClick={() => removeEntireItem(item.id)}>
                                 <Trash2 className="h-3.5 w-3.5" />
                                 <span className="sr-only">Удалить {item.name} из заказа</span>
@@ -307,9 +305,11 @@ export function OrderBuilder() {
               </ScrollArea>
           </CardContent>
 
-            <Separator className={cn(isSheet ? "mt-2" : "mt-0 mb-4 mx-4")} /> {/* Adjusted desktop margins */}
+          {/* Separator moved inside CardFooter for better layout control */}
+           <CardFooter className={cn("flex flex-col gap-2 md:gap-3 p-3 md:p-4 pt-0 flex-shrink-0", isSheet ? "border-t pt-3" : "pt-2")}> {/* Add border-top and padding for sheet, adjust desktop padding */}
+               {/* Separator only for Desktop */}
+               {!isSheet && <Separator className="mb-3" />}
 
-           <CardFooter className={cn("flex flex-col gap-2 md:gap-3 p-3 md:p-4 pt-0", isSheet ? "flex-col" : "")}> {/* Desktop gets padding here, remove top padding */}
               {order.length > 0 ? (
                  <>
                   <div className="flex justify-between w-full font-semibold text-sm md:text-base">
@@ -327,15 +327,15 @@ export function OrderBuilder() {
                              variant={selectedPaymentMethod === method ? "default" : "outline"}
                              onClick={() => setSelectedPaymentMethod(method)}
                              className={cn(
-                                 "h-auto min-h-[48px] md:min-h-[56px] text-xs flex-col items-center justify-center px-1 py-1.5 leading-tight", // Use h-auto, min-height, adjusted py/px
+                                 "h-auto min-h-[48px] text-xs flex-col items-center justify-center px-1 py-1 leading-tight", // Adjusted py
                                  selectedPaymentMethod === method ? 'bg-accent hover:bg-accent/90 text-accent-foreground' : ''
                              )}
-                             size="sm" // Keep sm size for consistent styling base
+                             size="sm"
                             >
-                              {method === 'Наличные' && <Banknote className="h-3.5 w-3.5 md:h-4 md:w-4 mb-1" />} {/* Increased mb */}
-                              {method === 'Карта' && <CreditCard className="h-3.5 w-3.5 md:h-4 md:w-4 mb-1" />} {/* Increased mb */}
-                              {method === 'Перевод' && <Smartphone className="h-3.5 w-3.5 md:h-4 md:w-4 mb-1" />} {/* Increased mb */}
-                              <span className="text-center block">{method}</span> {/* Added span for better control */}
+                              {method === 'Наличные' && <Banknote className="h-3.5 w-3.5 md:h-4 md:w-4 mb-0.5" />} {/* Reduced mb */}
+                              {method === 'Карта' && <CreditCard className="h-3.5 w-3.5 md:h-4 md:w-4 mb-0.5" />} {/* Reduced mb */}
+                              {method === 'Перевод' && <Smartphone className="h-3.5 w-3.5 md:h-4 md:w-4 mb-0.5" />} {/* Reduced mb */}
+                              <span className="text-center block">{method}</span>
                             </Button>
                          ))}
                      </div>
@@ -345,12 +345,12 @@ export function OrderBuilder() {
                   <div className="flex gap-2 w-full pt-2">
                      <Button
                          onClick={handleCheckout}
-                         className="flex-1 h-8 md:h-9 text-xs md:text-sm bg-primary hover:bg-primary/90 px-2" // Adjusted px
-                         disabled={!selectedPaymentMethod} // Disable if no payment method selected
+                         className="flex-1 h-8 md:h-9 text-xs md:text-sm bg-primary hover:bg-primary/90 px-2"
+                         disabled={!selectedPaymentMethod}
                      >
                      Оформить заказ
                      </Button>
-                     <Button variant="outline" onClick={clearOrder} className="h-8 md:h-9 text-xs md:text-sm px-2"> {/* Adjusted px */}
+                     <Button variant="outline" onClick={clearOrder} className="h-8 md:h-9 text-xs md:text-sm px-2">
                          <Trash2 className="mr-1 h-3 w-3" /> Очистить
                      </Button>
                   </div>
@@ -476,7 +476,7 @@ export function OrderBuilder() {
                      )}
                    </Button>
               </SheetTrigger>
-              <SheetContent side="bottom" className="rounded-t-lg h-[80vh] flex flex-col p-0"> {/* Adjust height and padding */}
+              <SheetContent side="bottom" className="rounded-t-lg h-[75vh] flex flex-col p-0"> {/* Reduced height, added flex flex-col */}
                   <OrderDetails isSheet={true} />
               </SheetContent>
             </Sheet>
@@ -485,7 +485,7 @@ export function OrderBuilder() {
 
        {/* Desktop Current Order - Reverted Layout */}
        <div className="hidden lg:block lg:col-span-1">
-         <Card className="shadow-md lg:sticky lg:top-4 md:top-8">
+         <Card className="shadow-md lg:sticky lg:top-4 md:top-8 max-h-[calc(100vh-4rem)] flex flex-col"> {/* Added max-height and flex */}
            <OrderDetails />
          </Card>
        </div>
