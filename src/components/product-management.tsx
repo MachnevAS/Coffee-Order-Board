@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import type { Product } from "@/types/product";
-import { PlusCircle, Edit, Trash2, Save, X, FilePlus2, Search, Trash } from "lucide-react"; // Added Trash icon
+import { PlusCircle, Edit, Trash2, Save, X, FilePlus2, Search, Trash, Coffee } from "lucide-react"; // Added Coffee icon
 import Image from "next/image";
 import { getRawProductData } from "@/lib/product-defaults"; // Import defaults and raw data getter
 import {
@@ -453,82 +453,92 @@ export function ProductManagement() {
                <p className="text-muted-foreground text-center py-4">Товары по вашему запросу не найдены.</p>
             ) : (
               <ul className="space-y-3">
-                {filteredProducts.map((product) => (
-                  <li key={product.id} className="flex flex-col p-3 border rounded-md bg-card transition-colors duration-150">
-                    {editingProductId === product.id ? (
-                      <Form {...editForm}>
-                          <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-3">
-                             <FormField control={editForm.control} name="name" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Название</FormLabel><FormControl><Input {...field} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
-                             <FormField control={editForm.control} name="volume" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Объём</FormLabel><FormControl><Input {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
-                             <FormField control={editForm.control} name="price" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Цена (₽)</FormLabel><FormControl><Input type="text" inputMode="numeric" pattern="[0-9]*([\.,][0-9]+)?" {...field} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
-                             <FormField control={editForm.control} name="imageUrl" render={({ field }) => ( <FormItem><FormLabel className="text-xs">URL изображения</FormLabel><FormControl><Input {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
-                             <FormField control={editForm.control} name="dataAiHint" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Подсказка ИИ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
-                             <div className="flex justify-end gap-2 pt-2">
-                                  <Button type="button" variant="ghost" size="sm" onClick={cancelEditing} className="text-xs px-2 h-8"><X className="h-4 w-4 mr-1" /> Отмена</Button> {/* Adjusted text size and padding */}
-                                  <Button type="submit" size="sm" className="text-xs px-2 h-8"><Save className="h-4 w-4 mr-1" /> Сохранить</Button> {/* Adjusted text size and padding */}
+                {filteredProducts.map((product) => {
+                   // State to track image loading error for each item
+                   const [imgError, setImgError] = useState(false);
+                   const imgSrc = product.imageUrl || `https://picsum.photos/100/100?random=${product.id}`;
+
+                  return (
+                    <li key={product.id} className="flex flex-col p-3 border rounded-md bg-card transition-colors duration-150">
+                      {editingProductId === product.id ? (
+                        <Form {...editForm}>
+                            <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-3">
+                               <FormField control={editForm.control} name="name" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Название</FormLabel><FormControl><Input {...field} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
+                               <FormField control={editForm.control} name="volume" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Объём</FormLabel><FormControl><Input {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
+                               <FormField control={editForm.control} name="price" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Цена (₽)</FormLabel><FormControl><Input type="text" inputMode="numeric" pattern="[0-9]*([\.,][0-9]+)?" {...field} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
+                               <FormField control={editForm.control} name="imageUrl" render={({ field }) => ( <FormItem><FormLabel className="text-xs">URL изображения</FormLabel><FormControl><Input {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
+                               <FormField control={editForm.control} name="dataAiHint" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Подсказка ИИ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
+                               <div className="flex justify-end gap-2 pt-2">
+                                    <Button type="button" variant="ghost" size="sm" onClick={cancelEditing} className="text-xs px-2 h-8"><X className="h-4 w-4 mr-1" /> Отмена</Button> {/* Adjusted text size and padding */}
+                                    <Button type="submit" size="sm" className="text-xs px-2 h-8"><Save className="h-4 w-4 mr-1" /> Сохранить</Button> {/* Adjusted text size and padding */}
+                               </div>
+                            </form>
+                        </Form>
+                      ) : (
+                        <div className="flex items-center justify-between gap-2">
+                           <div className="flex items-center gap-2 md:gap-3 overflow-hidden flex-grow">
+                             <div className="relative h-10 w-10 md:h-12 md:w-12 rounded-md overflow-hidden flex-shrink-0 bg-muted flex items-center justify-center">
+                                  {imgError || !product.imageUrl ? (
+                                    <Coffee className="h-6 w-6 text-muted-foreground/50" /> // Fallback icon
+                                  ) : (
+                                     <Image
+                                      src={imgSrc}
+                                      alt={product.name}
+                                      fill
+                                      style={{objectFit:"cover"}}
+                                      data-ai-hint={product.dataAiHint || 'кофе'}
+                                      sizes="40px md:48px"
+                                      onError={() => setImgError(true)} // Set error state on failure
+                                      unoptimized={imgSrc.includes('picsum.photos')} // Avoid optimizing picsum placeholders
+                                    />
+                                  )}
                              </div>
-                          </form>
-                      </Form>
-                    ) : (
-                      <div className="flex items-center justify-between gap-2">
-                         <div className="flex items-center gap-2 md:gap-3 overflow-hidden flex-grow">
-                          <div className="relative h-10 w-10 md:h-12 md:w-12 rounded-md overflow-hidden flex-shrink-0">
-                               <Image
-                                src={product.imageUrl || `https://picsum.photos/100/100?random=${product.id}`}
-                                alt={product.name}
-                                fill
-                                style={{objectFit:"cover"}}
-                                data-ai-hint={product.dataAiHint || 'кофе'}
-                                className="bg-muted"
-                                 sizes="40px md:48px"
-                                 onError={(e) => { e.currentTarget.src = `https://picsum.photos/100/100?random=${product.id}&error=1` }} // Fallback for broken image URLs
-                              />
+
+                            <div className="overflow-hidden flex-grow">
+                                <p className="font-medium truncate text-sm md:text-base">{product.name}</p>
+                                {(product.volume || product.price !== undefined) && (
+                                    <p className="text-xs md:text-sm text-muted-foreground">
+                                        {product.volume && <span>{product.volume} / </span>}
+                                        {product.price.toFixed(0)} ₽
+                                    </p>
+                                )}
+                            </div>
+                           </div>
+
+                          <div className="flex gap-1 flex-shrink-0">
+                               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => startEditing(product)}>
+                                 <Edit className="h-4 w-4" />
+                                 <span className="sr-only">Редактировать {product.name}</span>
+                               </Button>
+
+                                <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10">
+                                            <Trash2 className="h-4 w-4" />
+                                            <span className="sr-only">Удалить {product.name}</span>
+                                        </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                        <AlertDialogTitle>Вы уверены?</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                            Это действие необратимо. Товар "{product.name} {product.volume || ''}" будет удален навсегда.
+                                        </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                        <AlertDialogCancel className="text-xs px-3 h-9">Отмена</AlertDialogCancel> {/* Adjusted size */}
+                                        <AlertDialogAction onClick={() => removeProduct(product.id)} className={buttonVariants({ variant: "destructive", size:"sm", className:"text-xs px-3 h-9" })}> {/* Adjusted size */}
+                                            Удалить
+                                        </AlertDialogAction>
+                                        </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                </AlertDialog>
                           </div>
-
-                          <div className="overflow-hidden flex-grow">
-                              <p className="font-medium truncate text-sm md:text-base">{product.name}</p>
-                              {(product.volume || product.price !== undefined) && (
-                                  <p className="text-xs md:text-sm text-muted-foreground">
-                                      {product.volume && <span>{product.volume} / </span>}
-                                      {product.price.toFixed(0)} ₽
-                                  </p>
-                              )}
-                          </div>
-                         </div>
-
-                        <div className="flex gap-1 flex-shrink-0">
-                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => startEditing(product)}>
-                               <Edit className="h-4 w-4" />
-                               <span className="sr-only">Редактировать {product.name}</span>
-                             </Button>
-
-                              <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10">
-                                          <Trash2 className="h-4 w-4" />
-                                          <span className="sr-only">Удалить {product.name}</span>
-                                      </Button>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent>
-                                      <AlertDialogHeader>
-                                      <AlertDialogTitle>Вы уверены?</AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                          Это действие необратимо. Товар "{product.name} {product.volume || ''}" будет удален навсегда.
-                                      </AlertDialogDescription>
-                                      </AlertDialogHeader>
-                                      <AlertDialogFooter>
-                                      <AlertDialogCancel className="text-xs px-3 h-9">Отмена</AlertDialogCancel> {/* Adjusted size */}
-                                      <AlertDialogAction onClick={() => removeProduct(product.id)} className={buttonVariants({ variant: "destructive", size:"sm", className:"text-xs px-3 h-9" })}> {/* Adjusted size */}
-                                          Удалить
-                                      </AlertDialogAction>
-                                      </AlertDialogFooter>
-                                  </AlertDialogContent>
-                              </AlertDialog>
                         </div>
-                      </div>
-                    )}
-                  </li>
-                ))}
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             )}
            </ScrollArea>

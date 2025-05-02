@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import type { Product } from "@/types/product";
 import type { PaymentMethod, Order } from "@/types/order"; // Import Order and PaymentMethod types
-import { MinusCircle, PlusCircle, Trash2, CreditCard, Banknote, Smartphone, Search, ShoppingCart } from "lucide-react"; // Re-added ShoppingCart for mobile badge
+import { MinusCircle, PlusCircle, Trash2, CreditCard, Banknote, Smartphone, Search, ShoppingCart, Coffee } from "lucide-react"; // Added Coffee icon
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input"; // Added Input
@@ -24,6 +24,7 @@ import {
   SheetClose, // Import Sheet components
 } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { VisuallyHidden } from '@radix-ui/react-visually-hidden'; // Import VisuallyHidden
 
 
 interface OrderItem extends Product {
@@ -259,37 +260,36 @@ export function OrderBuilder() {
     // Component to render the order details (used in both Sheet and desktop Card)
     const OrderDetails = ({ isSheet = false }: { isSheet?: boolean }) => (
         <>
-          {/* Title for Desktop, part of Header for Sheet */}
+          {/* Header with Title */}
           <CardHeader className={cn(
              "p-3 md:p-4 flex-shrink-0",
              isSheet ? "pb-2 border-b" : "pb-3" // Add border bottom only for sheet header
            )}
-           // For desktop, Card needs an accessible label
-           aria-labelledby={!isSheet ? orderCardTitleId : undefined}
+           // Provide accessible name based on context
+           aria-labelledby={isSheet ? orderSheetTitleId : orderCardTitleId}
           >
               <div className={cn(
-                 "text-lg flex items-center justify-between",
-                  isSheet ? "text-lg" : "text-xl" // Adjust title size for sheet
-                )}>
-                 {isSheet ? (
-                    <SheetTitle id={orderSheetTitleId} className="text-lg">
+                 "flex items-center justify-between",
+                 isSheet ? "text-lg" : "text-xl" // Adjust title size for sheet
+              )}>
+                  {/* Render title appropriately */}
+                  {/* The visible title is used for accessibility */}
+                  <CardTitle id={isSheet ? orderSheetTitleId : orderCardTitleId} className={isSheet ? "text-lg" : "text-xl"}>
                       Текущий заказ
-                    </SheetTitle>
-                 ) : (
-                    <CardTitle id={orderCardTitleId} className="text-xl">
-                        Текущий заказ
-                    </CardTitle>
-                 )}
-                {/* Close button only for sheet */}
-                {isSheet && <SheetClose className="relative -top-1 -right-1" />}
-             </div>
+                  </CardTitle>
+                  {/* Close button only for sheet */}
+                  {isSheet && <SheetClose className="relative -top-1 -right-1" />}
+              </div>
           </CardHeader>
 
           {/* CardContent now correctly enables ScrollArea to work within flex layout */}
-          <CardContent className={cn("p-0 flex-grow overflow-hidden min-h-0", isSheet ? "px-3 md:px-4" : "px-4 pt-0")}> {/* Use px for side padding, pt-0 for desktop, overflow-hidden */}
+          <CardContent className={cn(
+              "p-0 flex-grow overflow-hidden min-h-0", // Ensure CardContent can shrink and grow
+              isSheet ? "px-3 md:px-4" : "px-4 pt-0" // Use px for side padding, pt-0 for desktop, overflow-hidden
+          )}>
               <ScrollArea className={cn(
                 "h-full", // Let ScrollArea take full height of its container (CardContent)
-                !isSheet && "pr-2" // Add padding-right for scrollbar only on desktop
+                 "pr-2" // Add padding-right for scrollbar
               )}>
                  {order.length === 0 ? (
                   <p className="text-muted-foreground text-center py-3 md:py-4 text-sm">Ваш заказ пуст.</p>
@@ -300,7 +300,7 @@ export function OrderBuilder() {
                          key={item.id}
                          className={cn(
                             "flex justify-between items-center text-sm gap-2 py-1 px-1 rounded-sm", // Added px and rounded
-                             // Add alternating background based on index, works for both sheet and desktop now
+                             // Add alternating background based on index
                              (index % 2 !== 0 ? 'bg-muted/50' : 'bg-card')
                          )}
                        >
@@ -333,7 +333,10 @@ export function OrderBuilder() {
           </CardContent>
 
           {/* CardFooter remains at the bottom */}
-           <CardFooter className={cn("flex flex-col gap-2 md:gap-3 p-3 md:p-4 pt-0 flex-shrink-0", isSheet ? "border-t pt-3" : "pt-2")}> {/* Keep flex-shrink-0 */}
+           <CardFooter className={cn(
+               "flex flex-col gap-2 md:gap-3 p-3 md:p-4 pt-0 flex-shrink-0",
+               isSheet ? "border-t pt-3" : "pt-2"
+               )}> {/* Keep flex-shrink-0 */}
                {/* Separator only for Desktop */}
                {!isSheet && order.length > 0 && <Separator className="mb-3" />}
 
@@ -408,9 +411,9 @@ export function OrderBuilder() {
              </div>
              <div className="lg:col-span-1">
                  {/* Placeholder for the order card during SSR */}
-                 <Card className="shadow-lg lg:sticky lg:top-8">
-                    <CardHeader>
-                       <CardTitle className="flex items-center justify-between">
+                 <Card className="shadow-lg lg:sticky lg:top-8 max-h-[calc(100vh-4rem)] flex flex-col">
+                    <CardHeader aria-labelledby={orderCardTitleId}>
+                       <CardTitle id={orderCardTitleId} className="flex items-center justify-between text-xl">
                         <span>Текущий заказ</span>
                        </CardTitle>
                     </CardHeader>
@@ -447,37 +450,47 @@ export function OrderBuilder() {
            <p className="text-muted-foreground">Товары по вашему запросу не найдены.</p>
         ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 gap-2 md:gap-3">
-          {filteredProducts.map((product) => (
-            <Card key={product.id} className="overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-150 flex flex-col text-xs md:text-sm">
-              <CardHeader className="p-0">
-                <div className="relative h-20 w-full">
-                   <Image
-                    src={product.imageUrl || `https://picsum.photos/100/80?random=${product.id}`}
-                    alt={product.name}
-                    fill // Use fill instead of layout="fill"
-                    style={{objectFit:"cover"}} // Use style object for objectFit
-                    data-ai-hint={product.dataAiHint || 'кофе'}
-                    className="bg-muted"
-                    sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, (max-width: 1280px) 33vw, 25vw"
-                    onError={(e) => { e.currentTarget.src = `https://picsum.photos/100/80?random=${product.id}&error=1` }} // Fallback for broken image URLs
-                    />
-                </div>
-              </CardHeader>
-              <CardContent className="p-1.5 md:p-2 flex-grow flex items-center justify-between gap-1"> {/* Adjusted padding & flex items-center */}
-                 <div className="flex-grow"> {/* Wrapper for name and volume */}
-                     <CardTitle className="text-xs md:text-sm font-medium mb-0 line-clamp-2 leading-tight"> {/* Removed mb-0.5 */}
-                         {product.name} {product.volume && <span className="text-muted-foreground font-normal">({product.volume})</span>}
-                     </CardTitle>
-                 </div>
-                 <p className="text-sm md:text-base text-foreground font-semibold whitespace-nowrap flex-shrink-0">{product.price.toFixed(0)} ₽</p> {/* Larger price, nowrap, shrink-0 */}
-              </CardContent>
-              <CardFooter className="p-1.5 md:p-2 pt-0 mt-auto">
-                <Button onClick={() => addToOrder(product)} className="w-full h-7 md:h-8 text-xs px-2" variant="outline"> {/* Adjusted px */}
-                  <PlusCircle className="mr-1 h-3 w-3" /> Добавить
-                </Button>
-              </CardFooter>
-            </Card>
-          ))}
+          {filteredProducts.map((product) => {
+            // State to track image loading error for each card
+            const [imgError, setImgError] = useState(false);
+            const imgSrc = product.imageUrl || `https://picsum.photos/100/80?random=${product.id}`;
+
+            return (
+              <Card key={product.id} className="overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-150 flex flex-col text-xs md:text-sm">
+                <CardHeader className="p-0">
+                  <div className="relative h-20 w-full bg-muted flex items-center justify-center">
+                    {imgError || !product.imageUrl ? (
+                      <Coffee className="h-10 w-10 text-muted-foreground/50" /> // Fallback icon
+                    ) : (
+                      <Image
+                        src={imgSrc}
+                        alt={product.name}
+                        fill
+                        style={{ objectFit: "cover" }}
+                        data-ai-hint={product.dataAiHint || 'кофе'}
+                        sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, (max-width: 1280px) 33vw, 25vw"
+                        onError={() => setImgError(true)} // Set error state on failure
+                        unoptimized={imgSrc.includes('picsum.photos')} // Avoid optimizing picsum placeholders
+                      />
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent className="p-1.5 md:p-2 flex-grow flex items-center justify-between gap-1"> {/* Adjusted padding & flex items-center */}
+                   <div className="flex-grow"> {/* Wrapper for name and volume */}
+                       <CardTitle className="text-xs md:text-sm font-medium mb-0 line-clamp-2 leading-tight"> {/* Removed mb-0.5 */}
+                           {product.name} {product.volume && <span className="text-muted-foreground font-normal">({product.volume})</span>}
+                       </CardTitle>
+                   </div>
+                   <p className="text-sm md:text-base text-foreground font-semibold whitespace-nowrap flex-shrink-0">{product.price.toFixed(0)} ₽</p> {/* Larger price, nowrap, shrink-0 */}
+                </CardContent>
+                <CardFooter className="p-1.5 md:p-2 pt-0 mt-auto">
+                  <Button onClick={() => addToOrder(product)} className="w-full h-7 md:h-8 text-xs px-2" variant="outline"> {/* Adjusted px */}
+                    <PlusCircle className="mr-1 h-3 w-3" /> Добавить
+                  </Button>
+                </CardFooter>
+              </Card>
+            );
+          })}
         </div>
          )}
       </div>
@@ -507,10 +520,13 @@ export function OrderBuilder() {
               <SheetContent
                  side="bottom"
                  className="rounded-t-lg h-[75vh] flex flex-col p-0"
-                 aria-labelledby={orderSheetTitleId} // Reference the title ID for accessibility
-                 aria-describedby={undefined} // Remove this if no separate description needed
+                 aria-labelledby={orderSheetTitleId} // Use the unique ID for aria-labelledby
               >
-                  {/* OrderDetails now contains the accessible title within its CardHeader */}
+                  {/* VisuallyHidden title is needed for accessibility */}
+                  <VisuallyHidden>
+                    <SheetTitle id={orderSheetTitleId}>Текущий заказ</SheetTitle>
+                  </VisuallyHidden>
+                  {/* OrderDetails now renders its own header and title */}
                   <OrderDetails isSheet={true} />
               </SheetContent>
             </Sheet>
@@ -521,6 +537,10 @@ export function OrderBuilder() {
        <div className="hidden lg:block lg:col-span-1">
          {/* Made Card sticky and flex column, set max-height */}
          <Card className="shadow-md lg:sticky lg:top-4 md:top-8 max-h-[calc(100vh-4rem)] flex flex-col">
+            {/* VisuallyHidden title for desktop Card */}
+            <VisuallyHidden>
+                 <CardTitle id={orderCardTitleId}>Текущий заказ</CardTitle>
+            </VisuallyHidden>
            <OrderDetails />
          </Card>
        </div>
