@@ -39,7 +39,9 @@ export function OrderBuilder() {
   const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
   const [isSheetOpen, setIsSheetOpen] = useState(false); // State for mobile sheet
-  const orderSheetTitleId = React.useId(); // Generate a unique ID
+  const orderSheetTitleId = React.useId(); // Generate a unique ID for sheet title
+  const orderCardTitleId = React.useId(); // Generate a unique ID for card title
+
 
   useEffect(() => {
     setIsClient(true);
@@ -261,22 +263,30 @@ export function OrderBuilder() {
           <CardHeader className={cn(
              "p-3 md:p-4 flex-shrink-0",
              isSheet ? "pb-2 border-b" : "pb-3" // Add border bottom only for sheet header
-           )}>
-              {/* Wrap SheetTitle in a div to use it correctly */}
-             <div className={cn(
+           )}
+           // For desktop, Card needs an accessible label
+           aria-labelledby={!isSheet ? orderCardTitleId : undefined}
+          >
+              <div className={cn(
                  "text-lg flex items-center justify-between",
                   isSheet ? "text-lg" : "text-xl" // Adjust title size for sheet
                 )}>
-                <SheetTitle id={isSheet ? orderSheetTitleId : undefined} className={isSheet ? "text-lg" : "text-xl"}>
-                    Текущий заказ
-                </SheetTitle>
+                 {isSheet ? (
+                    <SheetTitle id={orderSheetTitleId} className="text-lg">
+                      Текущий заказ
+                    </SheetTitle>
+                 ) : (
+                    <CardTitle id={orderCardTitleId} className="text-xl">
+                        Текущий заказ
+                    </CardTitle>
+                 )}
                 {/* Close button only for sheet */}
                 {isSheet && <SheetClose className="relative -top-1 -right-1" />}
              </div>
           </CardHeader>
 
           {/* CardContent now correctly enables ScrollArea to work within flex layout */}
-          <CardContent className={cn("p-0 flex-grow overflow-auto min-h-0", isSheet ? "px-3 md:px-4" : "px-4 pt-0")}> {/* Use px for side padding, pt-0 for desktop, ADDED min-h-0 */}
+          <CardContent className={cn("p-0 flex-grow overflow-hidden min-h-0", isSheet ? "px-3 md:px-4" : "px-4 pt-0")}> {/* Use px for side padding, pt-0 for desktop, overflow-hidden */}
               <ScrollArea className={cn(
                 "h-full", // Let ScrollArea take full height of its container (CardContent)
                 !isSheet && "pr-2" // Add padding-right for scrollbar only on desktop
@@ -518,3 +528,4 @@ export function OrderBuilder() {
     </div>
   );
 }
+
