@@ -258,23 +258,23 @@ export function OrderBuilder() {
     // Component to render the order details (used in both Sheet and desktop Card)
     const OrderDetails = ({ isSheet = false }: { isSheet?: boolean }) => (
         <>
-          <CardHeader className={cn("p-3 md:p-4", isSheet ? "pb-2 flex-shrink-0" : "pb-3")}> {/* Added flex-shrink-0 for sheet header */}
-            <CardTitle className={cn("text-base md:text-lg flex items-center justify-between", isSheet ? "text-lg" : "text-xl")}> {/* Adjusted desktop size */}
+          <CardHeader className={cn("p-3 md:p-4 flex-shrink-0", isSheet ? "pb-2" : "pb-3")}> {/* Adjusted padding and flex-shrink for header */}
+            <CardTitle className={cn("text-lg flex items-center justify-between", isSheet ? "" : "text-xl")}> {/* Adjusted desktop size */}
               <span>Текущий заказ</span>
              </CardTitle>
              {isSheet && <SheetClose className="absolute right-3 top-3" />}
           </CardHeader>
 
-          <CardContent className={cn("p-0 flex-grow overflow-hidden", isSheet ? "px-3 md:px-4" : "p-4 pt-0")}> {/* Desktop gets padding here, sheet gets flex-grow */}
+          {/* CardContent now correctly enables ScrollArea to work within flex layout */}
+          <CardContent className={cn("p-0 flex-grow overflow-hidden", isSheet ? "px-3 md:px-4" : "px-4 pt-0")}> {/* Use px for side padding, pt-0 for desktop */}
               <ScrollArea className={cn(
-                isSheet
-                  ? "h-full" // Mobile sheet scroll takes remaining height
-                  : "max-h-[calc(100vh-280px)]" // Desktop scroll height - Limited by viewport minus other elements roughly
+                "h-full", // Let ScrollArea take full height of its container (CardContent)
+                !isSheet && "pr-2" // Add padding-right for scrollbar only on desktop
               )}>
                  {order.length === 0 ? (
                   <p className="text-muted-foreground text-center py-3 md:py-4 text-sm">Ваш заказ пуст.</p>
                  ) : (
-                   <ul className={cn("space-y-2 md:space-y-3", isSheet ? "" : "pr-3")}> {/* Desktop gets padding right on list */}
+                   <ul className="space-y-2 md:space-y-3 pt-1 pb-2 md:pb-3"> {/* Add padding top/bottom inside scroll area */}
                     {order.map((item) => (
                        <li key={item.id} className="flex justify-between items-center text-sm gap-2 py-1"> {/* Added py-1 */}
                          <div className="flex-grow overflow-hidden mr-1"> {/* Allow name to take space, add margin */}
@@ -305,10 +305,10 @@ export function OrderBuilder() {
               </ScrollArea>
           </CardContent>
 
-          {/* Separator moved inside CardFooter for better layout control */}
-           <CardFooter className={cn("flex flex-col gap-2 md:gap-3 p-3 md:p-4 pt-0 flex-shrink-0", isSheet ? "border-t pt-3" : "pt-2")}> {/* Add border-top and padding for sheet, adjust desktop padding */}
+          {/* CardFooter remains at the bottom */}
+           <CardFooter className={cn("flex flex-col gap-2 md:gap-3 p-3 md:p-4 pt-0 flex-shrink-0", isSheet ? "border-t pt-3" : "pt-2")}> {/* Keep flex-shrink-0 */}
                {/* Separator only for Desktop */}
-               {!isSheet && <Separator className="mb-3" />}
+               {!isSheet && order.length > 0 && <Separator className="mb-3" />}
 
               {order.length > 0 ? (
                  <>
@@ -385,7 +385,6 @@ export function OrderBuilder() {
                     <CardHeader>
                        <CardTitle className="flex items-center justify-between">
                         <span>Текущий заказ</span>
-                        {/* Removed icon */}
                        </CardTitle>
                     </CardHeader>
                     <CardContent>
@@ -483,9 +482,10 @@ export function OrderBuilder() {
         </div>
 
 
-       {/* Desktop Current Order - Reverted Layout */}
+       {/* Desktop Current Order - Adjusted Layout for Scrolling */}
        <div className="hidden lg:block lg:col-span-1">
-         <Card className="shadow-md lg:sticky lg:top-4 md:top-8 max-h-[calc(100vh-4rem)] flex flex-col"> {/* Added max-height and flex */}
+         {/* Made Card sticky and flex column, set max-height */}
+         <Card className="shadow-md lg:sticky lg:top-4 md:top-8 max-h-[calc(100vh-4rem)] flex flex-col">
            <OrderDetails />
          </Card>
        </div>
@@ -493,5 +493,3 @@ export function OrderBuilder() {
     </div>
   );
 }
-
-    
