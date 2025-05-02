@@ -14,10 +14,10 @@ export default function Home() {
         </h1>
       </header>
       <Tabs defaultValue="order">
-        <TabsList className="grid w-full grid-cols-3 max-w-lg mx-auto mb-6"> {/* Updated grid-cols */}
-          <TabsTrigger value="order">Конструктор заказов</TabsTrigger>
-          <TabsTrigger value="manage">Управление товарами</TabsTrigger>
-          <TabsTrigger value="history">История продаж</TabsTrigger> {/* Added history tab */}
+        <TabsList className="grid w-full grid-cols-3 mx-auto mb-6"> {/* Removed max-w-lg */}
+          <TabsTrigger value="order" className="text-xs sm:text-sm px-2 sm:px-3">Конструктор заказов</TabsTrigger> {/* Adjusted text size and padding */}
+          <TabsTrigger value="manage" className="text-xs sm:text-sm px-2 sm:px-3">Управление товарами</TabsTrigger> {/* Adjusted text size and padding */}
+          <TabsTrigger value="history" className="text-xs sm:text-sm px-2 sm:px-3">История продаж</TabsTrigger> {/* Adjusted text size and padding */}
         </TabsList>
         <TabsContent value="order">
           <OrderBuilder />
