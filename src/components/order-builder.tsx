@@ -9,10 +9,18 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import type { Product } from "@/types/product";
 import type { PaymentMethod, Order } from "@/types/order"; // Import Order and PaymentMethod types
-import { MinusCircle, PlusCircle, Trash2, CreditCard, Banknote, Smartphone, Search, ShoppingCart, X } from "lucide-react"; // Added X icon
+import { MinusCircle, PlusCircle, Trash2, CreditCard, Banknote, Smartphone, Search, ShoppingCart, X, ArrowDownAZ, ArrowDownZA, ArrowDown01, ArrowDown10, SlidersHorizontal } from "lucide-react"; // Added sorting icons
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input"; // Added Input
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"; // Import DropdownMenu components
 import {
   Sheet,
   SheetContent,
@@ -31,6 +39,9 @@ interface OrderItem extends Product {
   quantity: number;
 }
 
+type SortOption = 'default' | 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc';
+
+
 export function OrderBuilder() {
   // --- All Hooks called unconditionally at the top ---
   const [products, setProducts] = useState<Product[]>([]);
@@ -38,6 +49,7 @@ export function OrderBuilder() {
   const [totalPrice, setTotalPrice] = useState<number>(0);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>(""); // State for search term
+  const [sortOption, setSortOption] = useState<SortOption>('default'); // State for sorting
   const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
   const [isSheetOpen, setIsSheetOpen] = useState(false); // State for mobile sheet
@@ -149,16 +161,43 @@ export function OrderBuilder() {
     };
   }, [isClient]); // Rerun only if isClient changes
 
-  // Memoize filtered products based on search term
-  const filteredProducts = useMemo(() => {
-    if (!searchTerm) {
-      return products;
+  // Memoize filtered and sorted products
+  const filteredAndSortedProducts = useMemo(() => {
+    let result = [...products]; // Create a copy to avoid mutating original state
+
+    // 1. Filter by search term
+    if (searchTerm) {
+      const lowerCaseSearchTerm = searchTerm.toLowerCase();
+      result = result.filter(product =>
+        product.name.toLowerCase().includes(lowerCaseSearchTerm)
+      );
     }
-    const lowerCaseSearchTerm = searchTerm.toLowerCase();
-    return products.filter(product =>
-      product.name.toLowerCase().includes(lowerCaseSearchTerm)
-    );
-  }, [products, searchTerm]);
+
+    // 2. Sort based on selected option
+    switch (sortOption) {
+      case 'name-asc':
+        result.sort((a, b) => a.name.localeCompare(b.name));
+        break;
+      case 'name-desc':
+        result.sort((a, b) => b.name.localeCompare(a.name));
+        break;
+      case 'price-asc':
+        result.sort((a, b) => a.price - b.price);
+        break;
+      case 'price-desc':
+        result.sort((a, b) => b.price - a.price);
+        break;
+      case 'default':
+      default:
+        // No sorting applied, maintain original order (after filtering)
+        // Or apply a default sort if desired, e.g., by name:
+        // result.sort((a, b) => a.name.localeCompare(b.name));
+        break;
+    }
+
+    return result;
+  }, [products, searchTerm, sortOption]);
+
 
   // Memoize order quantities for quick lookup in ProductCard
   const orderQuantities = useMemo(() => {
@@ -287,11 +326,11 @@ export function OrderBuilder() {
           )}>
               {/* Render title appropriately */}
               {/* The visible title is used for accessibility */}
-              <CardTitle id={isSheet ? orderSheetTitleId : orderCardTitleId} className={isSheet ? "text-lg" : "text-xl"}>
-                  Текущий заказ
-              </CardTitle>
-              {/* Close button only for sheet - REMOVED, SheetContent provides one */}
-              {/* {isSheet && <SheetClose asChild><Button variant="ghost" size="icon" className="relative -top-1 -right-1 h-7 w-7"><X className="h-4 w-4"/></Button></SheetClose>} */}
+              {isSheet ? (
+                  <SheetTitle id={orderSheetTitleId} className="text-lg">Текущий заказ</SheetTitle>
+              ) : (
+                  <CardTitle id={orderCardTitleId} className="text-xl">Текущий заказ</CardTitle>
+              )}
           </div>
       </CardHeader>
 
@@ -411,13 +450,20 @@ export function OrderBuilder() {
          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
              <div className="lg:col-span-2">
                 <h2 className="text-2xl font-semibold mb-4 text-primary">Доступные товары</h2>
-                 <div className="relative mb-4">
-                    <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                        placeholder="Поиск товаров..."
-                        className="pl-8 h-9"
-                        disabled // Disable while loading
-                    />
+                 <div className="flex gap-2 mb-4">
+                    <div className="relative flex-grow">
+                       <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                       <Input
+                           placeholder="Поиск товаров..."
+                           className="pl-8 pr-8 h-9" // Add pr-8 for clear button
+                           disabled // Disable while loading
+                       />
+                       {/* Placeholder for clear button */}
+                    </div>
+                     <Button variant="outline" size="sm" className="h-9 px-3" disabled>
+                        <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" />
+                        Сортировать
+                     </Button>
                  </div>
                 <p className="text-muted-foreground">Загрузка товаров...</p>
              </div>
@@ -445,36 +491,75 @@ export function OrderBuilder() {
       <div className="lg:col-span-2">
         <h2 className="text-2xl font-semibold mb-4 text-primary">Доступные товары</h2>
 
-         {/* Search Input */}
-         <div className="relative mb-4">
-           <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-           <Input
-             placeholder="Поиск товаров..."
-             value={searchTerm}
-             onChange={(e) => setSearchTerm(e.target.value)}
-             className="pl-8 pr-8 h-9" // Adjusted height and padding (added pr-8 for clear button)
-           />
-           {searchTerm && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                onClick={() => setSearchTerm("")}
-              >
-                <X className="h-4 w-4" />
-                 <span className="sr-only">Очистить поиск</span>
-              </Button>
-           )}
+         {/* Search and Sort Controls */}
+         <div className="flex gap-2 mb-4">
+           {/* Search Input */}
+           <div className="relative flex-grow">
+             <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+             <Input
+               placeholder="Поиск товаров..."
+               value={searchTerm}
+               onChange={(e) => setSearchTerm(e.target.value)}
+               className="pl-8 pr-8 h-9" // Adjusted height and padding (added pr-8 for clear button)
+             />
+             {searchTerm && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  onClick={() => setSearchTerm("")}
+                >
+                  <X className="h-4 w-4" />
+                   <span className="sr-only">Очистить поиск</span>
+                </Button>
+             )}
+           </div>
+
+           {/* Sort Dropdown */}
+           <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                 <Button variant="outline" size="sm" className="h-9 px-3 text-xs sm:text-sm">
+                     <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" />
+                    Сортировать
+                 </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                 <DropdownMenuLabel>Сортировать по</DropdownMenuLabel>
+                 <DropdownMenuSeparator />
+                 <DropdownMenuItem onSelect={() => setSortOption('name-asc')} className={cn(sortOption === 'name-asc' && 'bg-accent')}>
+                    <ArrowDownAZ className="mr-2 h-4 w-4" />
+                    <span>Названию (А-Я)</span>
+                 </DropdownMenuItem>
+                 <DropdownMenuItem onSelect={() => setSortOption('name-desc')} className={cn(sortOption === 'name-desc' && 'bg-accent')}>
+                     <ArrowDownZA className="mr-2 h-4 w-4" />
+                     <span>Названию (Я-А)</span>
+                 </DropdownMenuItem>
+                 <DropdownMenuItem onSelect={() => setSortOption('price-asc')} className={cn(sortOption === 'price-asc' && 'bg-accent')}>
+                     <ArrowDown01 className="mr-2 h-4 w-4" />
+                     <span>Цене (по возрастанию)</span>
+                 </DropdownMenuItem>
+                 <DropdownMenuItem onSelect={() => setSortOption('price-desc')} className={cn(sortOption === 'price-desc' && 'bg-accent')}>
+                     <ArrowDown10 className="mr-2 h-4 w-4" />
+                     <span>Цене (по убыванию)</span>
+                 </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => setSortOption('default')} className={cn(sortOption === 'default' && 'bg-accent')}>
+                      {/* Placeholder for a potential default icon */}
+                      <span className="mr-2 h-4 w-4"></span>
+                      <span>По умолчанию</span>
+                  </DropdownMenuItem>
+              </DropdownMenuContent>
+           </DropdownMenu>
          </div>
 
 
         {products.length === 0 ? (
            <p className="text-muted-foreground">Товары отсутствуют. Добавьте их вручную или загрузите начальный список во вкладке "Управление товарами".</p>
-        ) : filteredProducts.length === 0 ? (
+        ) : filteredAndSortedProducts.length === 0 ? (
            <p className="text-muted-foreground">Товары по вашему запросу не найдены.</p>
         ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 gap-2 md:gap-3">
-          {filteredProducts.map((product) => (
+          {filteredAndSortedProducts.map((product) => (
              <ProductCard
                  key={product.id}
                  product={product}
@@ -514,9 +599,8 @@ export function OrderBuilder() {
                  className="rounded-t-lg h-[75vh] flex flex-col p-0"
                  aria-labelledby={orderSheetTitleId} // Use the unique ID for aria-labelledby
               >
-                  {/* VisuallyHidden title is needed for accessibility */}
                   <VisuallyHidden>
-                    <SheetTitle id={orderSheetTitleId}>Текущий заказ</SheetTitle>
+                      <SheetTitle id={orderSheetTitleId}>Текущий заказ</SheetTitle>
                   </VisuallyHidden>
                   {/* OrderDetails now renders its own header and title */}
                   <OrderDetails isSheet={true} />
@@ -529,7 +613,6 @@ export function OrderBuilder() {
        <div className="hidden lg:block lg:col-span-1">
          {/* Made Card sticky and flex column, set max-height */}
          <Card className="shadow-md lg:sticky lg:top-4 md:top-8 max-h-[calc(100vh-4rem)] flex flex-col">
-            {/* VisuallyHidden title for desktop Card */}
             <VisuallyHidden>
                  <CardTitle id={orderCardTitleId}>Текущий заказ</CardTitle>
             </VisuallyHidden>
@@ -541,4 +624,3 @@ export function OrderBuilder() {
   );
 }
 
-    

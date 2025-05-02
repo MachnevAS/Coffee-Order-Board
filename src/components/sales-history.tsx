@@ -18,7 +18,15 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { Calendar as CalendarIcon, Download, Trash2, CreditCard, Banknote, Smartphone, Trash } from 'lucide-react'; // Added payment icons and Trash
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"; // Import DropdownMenu components
+import { Calendar as CalendarIcon, Download, Trash2, CreditCard, Banknote, Smartphone, Trash, SlidersHorizontal, ArrowUpDown } from 'lucide-react'; // Added payment icons, Trash, and sorting icons
 import { format, parseISO, startOfDay, endOfDay, isValid } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import * as XLSX from 'xlsx';
@@ -48,11 +56,14 @@ import {
 } from "@/components/ui/tooltip"; // Import Tooltip components
 
 
-// No need to redefine OrderItem or Order here, they are imported
+type SortKey = 'timestamp' | 'totalPrice';
+type SortDirection = 'asc' | 'desc';
+
 
 export function SalesHistory() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
+  const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection } | null>(null);
   const [isClient, setIsClient] = useState(false);
   const [isClearHistoryDialogOpen, setIsClearHistoryDialogOpen] = useState(false); // State for clear history dialog
   const { toast } = useToast(); // Initialize toast
@@ -64,13 +75,8 @@ export function SalesHistory() {
         if (storedOrders) {
             try {
                 const parsedOrders: Order[] = JSON.parse(storedOrders);
-                // Ensure orders are sorted by timestamp descending initially
                  if (Array.isArray(parsedOrders) && parsedOrders.every(o => typeof o.id === 'string' && typeof o.timestamp === 'string')) { // Basic validation
-                    setOrders(
-                        parsedOrders.sort(
-                            (a, b) => parseISO(b.timestamp).getTime() - parseISO(a.timestamp).getTime()
-                        )
-                    );
+                    setOrders(parsedOrders); // Don't sort initially, let sortConfig handle it
                  } else {
                      console.error('Parsed orders is not a valid array or structure:', parsedOrders);
                      setOrders([]);
@@ -128,30 +134,57 @@ export function SalesHistory() {
    }, [orders, isClient, toast]); // Add toast dependency
 
 
-  const filteredOrders = useMemo(() => {
-    if (!dateRange?.from) {
-      return orders; // Return all orders if no start date
-    }
+   const filteredAndSortedOrders = useMemo(() => {
+      let filtered = [...orders]; // Start with a copy
 
-    const start = startOfDay(dateRange.from);
-    // If only 'from' is selected, filter for that single day
-    const end = dateRange.to ? endOfDay(dateRange.to) : endOfDay(dateRange.from);
+      // 1. Filter by date range
+      if (dateRange?.from) {
+        const start = startOfDay(dateRange.from);
+        const end = dateRange.to ? endOfDay(dateRange.to) : endOfDay(dateRange.from);
 
-    return orders.filter((order) => {
-        try {
-            const orderDate = parseISO(order.timestamp);
-            return isValid(orderDate) && orderDate >= start && orderDate <= end;
-        } catch (e) {
-            console.error("Error parsing order timestamp:", order.timestamp, e);
-            return false; // Exclude orders with invalid timestamps
-        }
-    });
-  }, [orders, dateRange]);
+        filtered = filtered.filter((order) => {
+            try {
+                const orderDate = parseISO(order.timestamp);
+                return isValid(orderDate) && orderDate >= start && orderDate <= end;
+            } catch (e) {
+                console.error("Error parsing order timestamp:", order.timestamp, e);
+                return false;
+            }
+        });
+      }
+
+      // 2. Sort based on sortConfig
+      if (sortConfig) {
+          filtered.sort((a, b) => {
+              let aValue: string | number = a[sortConfig.key];
+              let bValue: string | number = b[sortConfig.key];
+
+              // Handle date sorting
+              if (sortConfig.key === 'timestamp') {
+                  aValue = parseISO(a.timestamp).getTime();
+                  bValue = parseISO(b.timestamp).getTime();
+              }
+
+              if (aValue < bValue) {
+                  return sortConfig.direction === 'asc' ? -1 : 1;
+              }
+              if (aValue > bValue) {
+                  return sortConfig.direction === 'asc' ? 1 : -1;
+              }
+              return 0;
+          });
+      } else {
+           // Default sort: newest first if no sort config is set
+           filtered.sort((a, b) => parseISO(b.timestamp).getTime() - parseISO(a.timestamp).getTime());
+      }
+
+      return filtered;
+    }, [orders, dateRange, sortConfig]);
 
   const handleExport = () => {
     if (!isClient) return;
 
-    const dataToExport = filteredOrders.map((order) => ({
+    const dataToExport = filteredAndSortedOrders.map((order) => ({ // Use filteredAndSortedOrders
       'ID Заказа': order.id,
       'Дата и время': format(parseISO(order.timestamp), 'dd.MM.yyyy HH:mm:ss', { locale: ru }),
       'Товары': order.items
@@ -208,6 +241,27 @@ export function SalesHistory() {
             variant: "destructive",
         });
      }, 0);
+   };
+
+   const requestSort = (key: SortKey) => {
+       let direction: SortDirection = 'asc';
+       if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+           direction = 'desc';
+       } else if (sortConfig && sortConfig.key === key && sortConfig.direction === 'desc') {
+            // Optional: Third click resets sorting or cycles back to asc
+            setSortConfig(null); // Reset sorting
+            return;
+       }
+       setSortConfig({ key, direction });
+   };
+
+   const getSortIcon = (key: SortKey) => {
+       if (!sortConfig || sortConfig.key !== key) {
+           return <ArrowUpDown className="ml-1 h-3 w-3 text-muted-foreground/50" />;
+       }
+       return sortConfig.direction === 'asc' ?
+           <ArrowUpDown className="ml-1 h-3 w-3 transform rotate-0 text-foreground" /> :
+           <ArrowUpDown className="ml-1 h-3 w-3 transform rotate-180 text-foreground" />;
    };
 
 
@@ -284,7 +338,7 @@ export function SalesHistory() {
 
            {/* Right side: Action Buttons */}
            <div className="flex w-full sm:w-auto justify-end gap-2">
-               <Button onClick={handleExport} disabled={filteredOrders.length === 0} size="sm" className="h-9 md:h-10 text-xs md:text-sm px-3"> {/* Adjusted size/height and padding */}
+               <Button onClick={handleExport} disabled={filteredAndSortedOrders.length === 0} size="sm" className="h-9 md:h-10 text-xs md:text-sm px-3"> {/* Adjusted size/height and padding */}
                  <Download className="mr-1.5 h-3.5 w-3.5" /> {/* Adjusted margin/size */}
                  Выгрузить в Excel
                </Button>
@@ -328,22 +382,30 @@ export function SalesHistory() {
           <Table>
             <TableHeader className="sticky top-0 bg-background shadow-sm z-10">
               <TableRow>
-                <TableHead className="w-[100px] md:w-[150px] hidden sm:table-cell text-xs md:text-sm px-2 md:px-4">Дата</TableHead>
-                <TableHead className="text-xs md:text-sm px-2 md:px-4">Товары</TableHead>
-                <TableHead className="w-[90px] md:w-[110px] text-xs md:text-sm px-2 md:px-4">Оплата</TableHead> {/* Added Payment Method Header */}
-                <TableHead className="text-right w-[80px] md:w-[100px] text-xs md:text-sm px-2 md:px-4">Итого</TableHead>
-                <TableHead className="text-right w-[40px] md:w-[60px] px-2 md:px-4"></TableHead> {/* Header for delete button */}
+                 <TableHead className="w-[100px] md:w-[150px] hidden sm:table-cell text-xs md:text-sm px-2 md:px-4 cursor-pointer hover:bg-muted/50" onClick={() => requestSort('timestamp')}>
+                    <div className="flex items-center">
+                      Дата {getSortIcon('timestamp')}
+                    </div>
+                 </TableHead>
+                 <TableHead className="text-xs md:text-sm px-2 md:px-4">Товары</TableHead>
+                 <TableHead className="w-[90px] md:w-[110px] text-xs md:text-sm px-2 md:px-4">Оплата</TableHead> {/* Added Payment Method Header */}
+                 <TableHead className="text-right w-[80px] md:w-[100px] text-xs md:text-sm px-2 md:px-4 cursor-pointer hover:bg-muted/50" onClick={() => requestSort('totalPrice')}>
+                    <div className="flex items-center justify-end">
+                      Итого {getSortIcon('totalPrice')}
+                    </div>
+                 </TableHead>
+                 <TableHead className="text-right w-[40px] md:w-[60px] px-2 md:px-4"></TableHead> {/* Header for delete button */}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredOrders.length === 0 ? (
+              {filteredAndSortedOrders.length === 0 ? ( // Use filteredAndSortedOrders
                 <TableRow>
                   <TableCell colSpan={5} className="text-center text-muted-foreground py-6 md:py-8 text-sm"> {/* Increased colspan */}
                     {orders.length === 0 ? "История продаж пуста." : "Нет заказов за выбранный период."}
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredOrders.map((order) => (
+                filteredAndSortedOrders.map((order) => ( // Use filteredAndSortedOrders
                   <TableRow key={order.id}>
                     <TableCell className="font-medium hidden sm:table-cell text-xs md:text-sm px-2 md:px-4 py-2 md:py-3 align-top"> {/* Adjusted padding */}
                       {format(parseISO(order.timestamp), 'dd.MM.yy HH:mm', { // Shorter date format

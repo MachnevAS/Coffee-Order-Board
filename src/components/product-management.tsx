@@ -10,6 +10,14 @@ import { Button, buttonVariants } from "@/components/ui/button"; // Import butto
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"; // Import DropdownMenu components
+import {
   Form,
   FormControl,
   FormField,
@@ -19,7 +27,7 @@ import {
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import type { Product } from "@/types/product";
-import { PlusCircle, Edit, Trash2, Save, X, FilePlus2, Search, Trash } from "lucide-react"; // Added X icon
+import { PlusCircle, Edit, Trash2, Save, X, FilePlus2, Search, Trash, SlidersHorizontal, ArrowDownAZ, ArrowDownZA, ArrowDown01, ArrowDown10 } from "lucide-react"; // Added sorting icons
 import { getRawProductData } from "@/lib/product-defaults"; // Import defaults and raw data getter
 import {
   AlertDialog,
@@ -40,6 +48,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"; // Import Tooltip components
 import { ProductListItem } from './product-list-item'; // Import the new component
+import { cn } from "@/lib/utils"; // Import cn utility
 
 
 const productSchema = z.object({
@@ -51,10 +60,13 @@ const productSchema = z.object({
 });
 
 type ProductFormData = z.infer<typeof productSchema>;
+type SortOption = 'default' | 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc'; // Added sort type
+
 
 export function ProductManagement() {
   const [products, setProducts] = useState<Product[]>([]);
   const [searchTerm, setSearchTerm] = useState<string>(""); // State for search term
+  const [sortOption, setSortOption] = useState<SortOption>('default'); // State for sorting
   const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
@@ -169,16 +181,41 @@ export function ProductManagement() {
    }, [products, isClient, toast]);
 
 
-  // Filter products based on search term
-  const filteredProducts = useMemo(() => {
-    if (!searchTerm) {
-      return products;
+  // Filter and sort products based on search term and sort option
+  const filteredAndSortedProducts = useMemo(() => {
+    let result = [...products]; // Create a copy to avoid mutating original state
+
+    // 1. Filter by search term
+    if (searchTerm) {
+      const lowerCaseSearchTerm = searchTerm.toLowerCase();
+      result = result.filter(product =>
+        product.name.toLowerCase().includes(lowerCaseSearchTerm)
+      );
     }
-    const lowerCaseSearchTerm = searchTerm.toLowerCase();
-    return products.filter(product =>
-      product.name.toLowerCase().includes(lowerCaseSearchTerm)
-    );
-  }, [products, searchTerm]);
+
+     // 2. Sort based on selected option
+     switch (sortOption) {
+       case 'name-asc':
+         result.sort((a, b) => a.name.localeCompare(b.name));
+         break;
+       case 'name-desc':
+         result.sort((a, b) => b.name.localeCompare(a.name));
+         break;
+       case 'price-asc':
+         result.sort((a, b) => a.price - b.price);
+         break;
+       case 'price-desc':
+         result.sort((a, b) => b.price - a.price);
+         break;
+       case 'default':
+       default:
+         // No sorting applied, maintain original order (after filtering)
+         // Or apply a default sort if desired
+         break;
+     }
+
+    return result;
+  }, [products, searchTerm, sortOption]);
 
 
   const onSubmit = (data: ProductFormData) => {
@@ -439,36 +476,73 @@ export function ProductManagement() {
             </div>
         </CardHeader>
         <CardContent className="flex-grow overflow-hidden p-0"> {/* Remove padding, let ScrollArea handle it */}
-            {/* Search Input for Existing Products */}
-            <div className="relative px-6 py-4"> {/* Added padding */}
-              <Search className="absolute left-8 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /> {/* Adjusted left padding */}
-              <Input
-                placeholder="Поиск товаров..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-8 pr-8 h-9" // Adjusted height and padding (added pr-8 for clear button)
-              />
-               {searchTerm && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="absolute right-7 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground hover:text-foreground" // Adjusted right padding
-                    onClick={() => setSearchTerm("")}
-                  >
-                    <X className="h-4 w-4" />
-                    <span className="sr-only">Очистить поиск</span>
-                  </Button>
-               )}
+            {/* Search and Sort Controls */}
+            <div className="flex gap-2 px-6 py-4 items-center"> {/* Added padding */}
+               {/* Search Input */}
+               <div className="relative flex-grow">
+                 <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                 <Input
+                   placeholder="Поиск товаров..."
+                   value={searchTerm}
+                   onChange={(e) => setSearchTerm(e.target.value)}
+                   className="pl-8 pr-8 h-9" // Adjusted height and padding (added pr-8 for clear button)
+                 />
+                  {searchTerm && (
+                     <Button
+                       variant="ghost"
+                       size="icon"
+                       className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground hover:text-foreground" // Adjusted right padding
+                       onClick={() => setSearchTerm("")}
+                     >
+                       <X className="h-4 w-4" />
+                       <span className="sr-only">Очистить поиск</span>
+                     </Button>
+                  )}
+               </div>
+                 {/* Sort Dropdown */}
+                <DropdownMenu>
+                   <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="icon" className="h-9 w-9 flex-shrink-0">
+                         <SlidersHorizontal className="h-4 w-4" />
+                         <span className="sr-only">Сортировать</span>
+                      </Button>
+                   </DropdownMenuTrigger>
+                   <DropdownMenuContent align="end">
+                      <DropdownMenuLabel>Сортировать по</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                       <DropdownMenuItem onSelect={() => setSortOption('name-asc')} className={cn(sortOption === 'name-asc' && 'bg-accent')}>
+                           <ArrowDownAZ className="mr-2 h-4 w-4" />
+                           <span>Названию (А-Я)</span>
+                       </DropdownMenuItem>
+                       <DropdownMenuItem onSelect={() => setSortOption('name-desc')} className={cn(sortOption === 'name-desc' && 'bg-accent')}>
+                           <ArrowDownZA className="mr-2 h-4 w-4" />
+                           <span>Названию (Я-А)</span>
+                       </DropdownMenuItem>
+                       <DropdownMenuItem onSelect={() => setSortOption('price-asc')} className={cn(sortOption === 'price-asc' && 'bg-accent')}>
+                           <ArrowDown01 className="mr-2 h-4 w-4" />
+                           <span>Цене (по возрастанию)</span>
+                       </DropdownMenuItem>
+                       <DropdownMenuItem onSelect={() => setSortOption('price-desc')} className={cn(sortOption === 'price-desc' && 'bg-accent')}>
+                           <ArrowDown10 className="mr-2 h-4 w-4" />
+                           <span>Цене (по убыванию)</span>
+                       </DropdownMenuItem>
+                       <DropdownMenuSeparator />
+                       <DropdownMenuItem onSelect={() => setSortOption('default')} className={cn(sortOption === 'default' && 'bg-accent')}>
+                           <span className="mr-2 h-4 w-4"></span>
+                           <span>По умолчанию</span>
+                       </DropdownMenuItem>
+                   </DropdownMenuContent>
+                </DropdownMenu>
             </div>
 
           <ScrollArea className="h-[440px] md:h-[540px] p-6 pt-0"> {/* Adjust height and add padding */}
             {products.length === 0 ? (
               <p className="text-muted-foreground text-center py-4">Товары еще не добавлены.</p>
-            ) : filteredProducts.length === 0 ? (
+            ) : filteredAndSortedProducts.length === 0 ? (
                <p className="text-muted-foreground text-center py-4">Товары по вашему запросу не найдены.</p>
             ) : (
               <ul className="space-y-3">
-                {filteredProducts.map((product) => (
+                {filteredAndSortedProducts.map((product) => (
                    <ProductListItem
                       key={product.id}
                       product={product}
@@ -489,6 +563,3 @@ export function ProductManagement() {
   );
 }
 
-
-
-    
