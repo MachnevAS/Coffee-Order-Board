@@ -7,7 +7,7 @@ import Image from "next/image";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge"; // Import Badge
-import { PlusCircle, MinusCircle, Coffee, Crown, Award, Medal } from "lucide-react"; // Import MinusCircle and rank icons
+import { PlusCircle, MinusCircle, Coffee, Crown, Award } from "lucide-react"; // Removed Medal, kept Award
 import type { Product } from "@/types/product";
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"; // Import Tooltip components
@@ -40,9 +40,9 @@ export function ProductCard({ product, onAddToOrder, onRemoveFromOrder, orderQua
         tooltipText = "Топ 2 по популярности";
         colorClass = "text-gray-400"; // Silver-like
     } else if (popularityRank === 3) {
-        icon = <Medal className="h-4 w-4" />;
+        icon = <Award className="h-4 w-4" />; // Changed Medal to Award
         tooltipText = "Топ 3 по популярности";
-        colorClass = "text-orange-400"; // Bronze-like
+        colorClass = "text-orange-500"; // Changed color to a darker bronze/orange
     }
 
     if (!icon) return null;
