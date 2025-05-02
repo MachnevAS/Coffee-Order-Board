@@ -18,7 +18,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { Calendar as CalendarIcon, Download, Trash2, CreditCard, Banknote, Smartphone } from 'lucide-react'; // Added payment icons
+import { Calendar as CalendarIcon, Download, Trash2, CreditCard, Banknote, Smartphone, Trash } from 'lucide-react'; // Added payment icons and Trash
 import { format, parseISO, startOfDay, endOfDay, isValid } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import * as XLSX from 'xlsx';
@@ -40,6 +40,12 @@ import {
 } from "@/components/ui/alert-dialog"; // Added AlertDialog
 import { useToast } from "@/hooks/use-toast"; // Added useToast
 import { cn } from '@/lib/utils';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"; // Import Tooltip components
 
 
 // No need to redefine OrderItem or Order here, they are imported
@@ -48,6 +54,7 @@ export function SalesHistory() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [isClient, setIsClient] = useState(false);
+  const [isClearHistoryDialogOpen, setIsClearHistoryDialogOpen] = useState(false); // State for clear history dialog
   const { toast } = useToast(); // Initialize toast
 
   useEffect(() => {
@@ -96,21 +103,18 @@ export function SalesHistory() {
            console.log("SalesHistory: Persisting orders to localStorage", orders.length);
            try {
                const currentStoredValue = localStorage.getItem("coffeeOrders");
-               const newOrdersJson = JSON.stringify(orders);
+               const newOrdersJson = JSON.stringify(orders); // Stringify current state (could be empty)
 
                if (currentStoredValue !== newOrdersJson) {
                    localStorage.setItem("coffeeOrders", newOrdersJson);
                    console.log("SalesHistory: Orders saved to localStorage.");
-                   // Note: We might not need to dispatch a storage event here unless
-                   // another component specifically needs to react *instantly* to
-                   // order history changes made within this component.
-                   // If OrderBuilder needs live updates on deletion, dispatch here.
-                     window.dispatchEvent(new StorageEvent('storage', {
-                        key: 'coffeeOrders',
-                        newValue: newOrdersJson,
-                        oldValue: currentStoredValue,
-                        storageArea: localStorage,
-                    }));
+                   // Dispatch event to notify other components if needed
+                   window.dispatchEvent(new StorageEvent('storage', {
+                       key: 'coffeeOrders',
+                       newValue: newOrdersJson,
+                       oldValue: currentStoredValue,
+                       storageArea: localStorage,
+                   }));
                }
            } catch (e) {
                console.error("SalesHistory: Failed to save orders to localStorage", e);
@@ -191,6 +195,21 @@ export function SalesHistory() {
       });
    };
 
+   // Function to clear all orders
+   const clearAllOrders = () => {
+     if (!isClient) return;
+     setOrders([]); // Set state to empty array
+     setIsClearHistoryDialogOpen(false); // Close the dialog
+     // Use setTimeout for toast to ensure it runs after state update cycle
+     setTimeout(() => {
+        toast({
+            title: "История очищена",
+            description: "Вся история продаж была удалена.",
+            variant: "destructive",
+        });
+     }, 0);
+   };
+
 
   const formatCurrency = (amount: number) => {
     return `${amount.toFixed(0)} ₽`; // Format without decimals
@@ -216,56 +235,93 @@ export function SalesHistory() {
              <CardTitle className="text-lg md:text-xl">История продаж</CardTitle> {/* Adjusted size */}
         </CardHeader>
       <CardContent className="p-4 md:p-6 pt-0"> {/* Adjusted padding */}
-        <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-3 md:gap-4">
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant={'outline'}
-                className="w-full sm:w-auto justify-start text-left font-normal text-xs md:text-sm h-9 md:h-10 px-3" // Adjusted size/height and padding
-              >
-                <CalendarIcon className="mr-1.5 h-3.5 w-3.5" /> {/* Adjusted margin/size */}
-                {dateRange?.from ? (
-                  dateRange.to ? (
-                    <>
-                      {format(dateRange.from, 'dd MMM y', { locale: ru })} -{' '}
-                      {format(dateRange.to, 'dd MMM y', { locale: ru })}
-                    </>
-                  ) : (
-                    format(dateRange.from, 'dd MMM y', { locale: ru })
-                  )
-                ) : (
-                  <span>Выберите дату</span>
-                )}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <Calendar
-                initialFocus
-                mode="range"
-                defaultMonth={dateRange?.from}
-                selected={dateRange}
-                onSelect={setDateRange}
-                numberOfMonths={1} // Show only 1 month on mobile initially
-                 className="sm:hidden" // Hide on larger screens initially
-                locale={ru}
-              />
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3 md:gap-4">
+           {/* Left side: Date Picker */}
+           <Popover>
+             <PopoverTrigger asChild>
+               <Button
+                 variant={'outline'}
+                 className="w-full sm:w-auto justify-start text-left font-normal text-xs md:text-sm h-9 md:h-10 px-3" // Adjusted size/height and padding
+               >
+                 <CalendarIcon className="mr-1.5 h-3.5 w-3.5" /> {/* Adjusted margin/size */}
+                 {dateRange?.from ? (
+                   dateRange.to ? (
+                     <>
+                       {format(dateRange.from, 'dd MMM y', { locale: ru })} -{' '}
+                       {format(dateRange.to, 'dd MMM y', { locale: ru })}
+                     </>
+                   ) : (
+                     format(dateRange.from, 'dd MMM y', { locale: ru })
+                   )
+                 ) : (
+                   <span>Выберите дату</span>
+                 )}
+               </Button>
+             </PopoverTrigger>
+             <PopoverContent className="w-auto p-0" align="start">
                <Calendar
-                initialFocus
-                mode="range"
-                defaultMonth={dateRange?.from}
-                selected={dateRange}
-                onSelect={setDateRange}
-                numberOfMonths={2} // Show 2 months on larger screens
-                className="hidden sm:block" // Hide on smaller screens
-                locale={ru}
-              />
-            </PopoverContent>
-          </Popover>
+                 initialFocus
+                 mode="range"
+                 defaultMonth={dateRange?.from}
+                 selected={dateRange}
+                 onSelect={setDateRange}
+                 numberOfMonths={1} // Show only 1 month on mobile initially
+                  className="sm:hidden" // Hide on larger screens initially
+                 locale={ru}
+               />
+                <Calendar
+                 initialFocus
+                 mode="range"
+                 defaultMonth={dateRange?.from}
+                 selected={dateRange}
+                 onSelect={setDateRange}
+                 numberOfMonths={2} // Show 2 months on larger screens
+                 className="hidden sm:block" // Hide on smaller screens
+                 locale={ru}
+               />
+             </PopoverContent>
+           </Popover>
 
-          <Button onClick={handleExport} disabled={filteredOrders.length === 0} size="sm" className="h-9 md:h-10 text-xs md:text-sm px-3"> {/* Adjusted size/height and padding */}
-            <Download className="mr-1.5 h-3.5 w-3.5" /> {/* Adjusted margin/size */}
-            Выгрузить в Excel
-          </Button>
+           {/* Right side: Action Buttons */}
+           <div className="flex w-full sm:w-auto justify-end gap-2">
+               <Button onClick={handleExport} disabled={filteredOrders.length === 0} size="sm" className="h-9 md:h-10 text-xs md:text-sm px-3"> {/* Adjusted size/height and padding */}
+                 <Download className="mr-1.5 h-3.5 w-3.5" /> {/* Adjusted margin/size */}
+                 Выгрузить в Excel
+               </Button>
+
+               {/* Clear All History Button */}
+               <AlertDialog open={isClearHistoryDialogOpen} onOpenChange={setIsClearHistoryDialogOpen}>
+                   <TooltipProvider>
+                       <Tooltip>
+                           <TooltipTrigger asChild>
+                               <AlertDialogTrigger asChild>
+                                   <Button variant="destructive" size="icon" className="h-9 w-9 md:h-10 md:w-10" disabled={orders.length === 0}>
+                                       <Trash className="h-4 w-4" />
+                                       <span className="sr-only">Очистить всю историю</span>
+                                   </Button>
+                               </AlertDialogTrigger>
+                           </TooltipTrigger>
+                           <TooltipContent>
+                               <p>Очистить всю историю</p>
+                           </TooltipContent>
+                       </Tooltip>
+                   </TooltipProvider>
+                   <AlertDialogContent>
+                       <AlertDialogHeader>
+                           <AlertDialogTitle>Вы уверены?</AlertDialogTitle>
+                           <AlertDialogDescription>
+                               Это действие необратимо. Вся история продаж будет удалена навсегда.
+                           </AlertDialogDescription>
+                       </AlertDialogHeader>
+                       <AlertDialogFooter>
+                           <AlertDialogCancel className="text-xs px-3 h-9">Отмена</AlertDialogCancel>
+                           <AlertDialogAction onClick={clearAllOrders} className={buttonVariants({ variant: "destructive", size:"sm", className:"text-xs px-3 h-9" })}>
+                               Очистить историю
+                           </AlertDialogAction>
+                       </AlertDialogFooter>
+                   </AlertDialogContent>
+               </AlertDialog>
+           </div>
         </div>
 
         <ScrollArea className="h-[400px] md:h-[500px] w-full border rounded-md"> {/* Adjusted height */}
@@ -283,7 +339,7 @@ export function SalesHistory() {
               {filteredOrders.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center text-muted-foreground py-6 md:py-8 text-sm"> {/* Increased colspan */}
-                    Нет заказов за выбранный период.
+                    {orders.length === 0 ? "История продаж пуста." : "Нет заказов за выбранный период."}
                   </TableCell>
                 </TableRow>
               ) : (
