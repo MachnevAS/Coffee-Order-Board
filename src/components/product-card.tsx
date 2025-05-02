@@ -5,15 +5,19 @@ import React, { useState } from 'react';
 import Image from "next/image";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, Coffee } from "lucide-react";
+import { Badge } from "@/components/ui/badge"; // Import Badge
+import { PlusCircle, MinusCircle, Coffee } from "lucide-react"; // Import MinusCircle
 import type { Product } from "@/types/product";
+import { cn } from '@/lib/utils';
 
 interface ProductCardProps {
   product: Product;
   onAddToOrder: (product: Product) => void;
+  onRemoveFromOrder: (productId: string) => void; // Add remove function prop
+  orderQuantity: number | undefined; // Add quantity prop
 }
 
-export function ProductCard({ product, onAddToOrder }: ProductCardProps) {
+export function ProductCard({ product, onAddToOrder, onRemoveFromOrder, orderQuantity }: ProductCardProps) {
   const [imgError, setImgError] = useState(false);
   const imgSrc = product.imageUrl || `https://picsum.photos/100/80?random=${product.id}`;
 
@@ -46,9 +50,39 @@ export function ProductCard({ product, onAddToOrder }: ProductCardProps) {
          <p className="text-sm md:text-base text-foreground font-semibold whitespace-nowrap flex-shrink-0">{product.price.toFixed(0)} ₽</p> {/* Larger price, nowrap, shrink-0 */}
       </CardContent>
       <CardFooter className="p-1.5 md:p-2 pt-0 mt-auto">
-        <Button onClick={() => onAddToOrder(product)} className="w-full h-7 md:h-8 text-xs px-2" variant="outline"> {/* Adjusted px */}
-          <PlusCircle className="mr-1 h-3 w-3" /> Добавить
-        </Button>
+        {orderQuantity && orderQuantity > 0 ? (
+          <div className="flex items-center justify-between w-full gap-1"> {/* Use justify-between and gap */}
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-7 w-7 md:h-8 md:w-8 flex-shrink-0" // flex-shrink-0
+              onClick={() => onRemoveFromOrder(product.id)}
+              aria-label={`Убрать 1 ${product.name}`}
+            >
+              <MinusCircle className="h-3.5 w-3.5" />
+            </Button>
+            <Badge variant="secondary" className="px-2 text-sm md:text-base font-medium flex-shrink-0 min-w-[28px] justify-center"> {/* Added min-width & justify-center */}
+              {orderQuantity}
+            </Badge>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-7 w-7 md:h-8 md:w-8 flex-shrink-0" // flex-shrink-0
+              onClick={() => onAddToOrder(product)}
+               aria-label={`Добавить 1 ${product.name}`}
+            >
+              <PlusCircle className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        ) : (
+          <Button
+            onClick={() => onAddToOrder(product)}
+            className="w-full h-7 md:h-8 text-xs px-2"
+            variant="outline"
+          >
+            <PlusCircle className="mr-1 h-3 w-3" /> Добавить
+          </Button>
+        )}
       </CardFooter>
     </Card>
   );

@@ -425,6 +425,15 @@ export function OrderBuilder() {
     );
   }
 
+   // Memoize order quantities for quick lookup
+   const orderQuantities = useMemo(() => {
+     const quantities: { [productId: string]: number } = {};
+     order.forEach(item => {
+       quantities[item.id] = item.quantity;
+     });
+     return quantities;
+   }, [order]);
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8 pb-16 lg:pb-0"> {/* Increased pb for floating button */}
       {/* Product List */}
@@ -450,7 +459,13 @@ export function OrderBuilder() {
         ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 gap-2 md:gap-3">
           {filteredProducts.map((product) => (
-            <ProductCard key={product.id} product={product} onAddToOrder={addToOrder} />
+             <ProductCard
+                 key={product.id}
+                 product={product}
+                 onAddToOrder={addToOrder}
+                 onRemoveFromOrder={removeFromOrder} // Pass the remove function
+                 orderQuantity={orderQuantities[product.id]} // Pass the quantity
+             />
           ))}
         </div>
          )}
