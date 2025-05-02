@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -9,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { Product } from "@/types/product";
 import { MinusCircle, PlusCircle, ShoppingCart, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { getDefaultProducts } from "@/lib/product-defaults"; // Import defaults
 
 interface OrderItem extends Product {
   quantity: number;
@@ -26,25 +28,29 @@ export function OrderBuilder() {
     const storedProducts = localStorage.getItem("coffeeProducts");
     if (storedProducts) {
       try {
-        setProducts(JSON.parse(storedProducts));
+        const parsedProducts: Product[] = JSON.parse(storedProducts);
+        // Basic validation: check if it's an array and has items
+        if (Array.isArray(parsedProducts) && parsedProducts.length > 0) {
+           setProducts(parsedProducts);
+        } else {
+           console.warn("Stored products invalid or empty, falling back to defaults.");
+           const defaultProds = getDefaultProducts();
+           setProducts(defaultProds);
+           localStorage.setItem("coffeeProducts", JSON.stringify(defaultProds));
+        }
       } catch (e) {
-        console.error("Failed to parse products from localStorage", e);
-        setProducts(getDefaultProducts());
-        localStorage.setItem("coffeeProducts", JSON.stringify(getDefaultProducts()));
+        console.error("Failed to parse products from localStorage, falling back to defaults.", e);
+        const defaultProds = getDefaultProducts();
+        setProducts(defaultProds);
+        localStorage.setItem("coffeeProducts", JSON.stringify(defaultProds));
       }
     } else {
-       // Add some default products if none are found in local storage
-       setProducts(getDefaultProducts());
-       localStorage.setItem("coffeeProducts", JSON.stringify(getDefaultProducts()));
+       // Add default products if none are found in local storage
+       const defaultProds = getDefaultProducts();
+       setProducts(defaultProds);
+       localStorage.setItem("coffeeProducts", JSON.stringify(defaultProds));
     }
-  }, []);
-
-  const getDefaultProducts = (): Product[] => [
-      { id: '1', name: 'Эспрессо', price: 150, imageUrl: 'https://picsum.photos/200/150?random=1', dataAiHint: 'espresso coffee' },
-      { id: '2', name: 'Латте', price: 250, imageUrl: 'https://picsum.photos/200/150?random=2', dataAiHint: 'latte coffee art' },
-      { id: '3', name: 'Капучино', price: 200, imageUrl: 'https://picsum.photos/200/150?random=3', dataAiHint: 'cappuccino froth' },
-      { id: '4', name: 'Американо', price: 180, imageUrl: 'https://picsum.photos/200/150?random=4', dataAiHint: 'americano black coffee' },
-  ];
+  }, []); // Run only once on mount
 
 
   useEffect(() => {
@@ -53,6 +59,30 @@ export function OrderBuilder() {
       setTotalPrice(newTotalPrice);
     }
   }, [order, isClient]);
+
+   // Update products in state if they change in localStorage (e.g., from ProductManagement)
+   useEffect(() => {
+    if (!isClient) return;
+
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === "coffeeProducts" && event.newValue) {
+        try {
+          const updatedProducts = JSON.parse(event.newValue);
+          if (Array.isArray(updatedProducts)) {
+            setProducts(updatedProducts);
+          }
+        } catch (e) {
+          console.error("Error updating products from localStorage change:", e);
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [isClient]);
+
 
   const addToOrder = (product: Product) => {
     setOrder((prevOrder) => {
@@ -98,7 +128,8 @@ export function OrderBuilder() {
 
     const orderData = {
         id: `order_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`, // Add unique ID
-        items: order.map(item => ({ name: item.name, quantity: item.quantity, price: item.price })),
+        // Include volume in saved items if it exists
+        items: order.map(item => ({ name: item.name, volume: item.volume, quantity: item.quantity, price: item.price })),
         totalPrice: totalPrice,
         timestamp: new Date().toISOString(),
     };
@@ -151,33 +182,37 @@ export function OrderBuilder() {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8"> {/* Reduced gap */}
       {/* Product List */}
       <div className="lg:col-span-2">
         <h2 className="text-2xl font-semibold mb-4 text-primary">Доступные товары</h2>
         {products.length === 0 ? (
            <p className="text-muted-foreground">Товары отсутствуют. Добавьте их во вкладке "Управление товарами".</p>
         ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 gap-3"> {/* More columns for smaller screens, reduced gap */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 gap-2 md:gap-3"> {/* More cols on larger screens, smaller gap */}
           {products.map((product) => (
-            <Card key={product.id} className="overflow-hidden shadow-md hover:shadow-lg transition-shadow duration-200 flex flex-col">
+            <Card key={product.id} className="overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-150 flex flex-col text-xs md:text-sm"> {/* Reduced shadow, faster transition, smaller base text */}
               <CardHeader className="p-0">
-                <div className="relative h-24 w-full"> {/* Reduced image height */}
+                <div className="relative h-20 w-full"> {/* Smaller image */}
                    <Image
-                    src={product.imageUrl || `https://picsum.photos/150/100?random=${product.id}`} // Smaller placeholder
+                    src={product.imageUrl || `https://picsum.photos/100/80?random=${product.id}`} // Smaller placeholder
                     alt={product.name}
                     layout="fill"
                     objectFit="cover"
                     data-ai-hint={product.dataAiHint || 'кофе'}
+                    className="bg-muted"
+                    sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, (max-width: 1280px) 33vw, 25vw" // Optimize image loading
                     />
                 </div>
               </CardHeader>
-              <CardContent className="p-2 flex-grow"> {/* Reduced padding */}
-                 <CardTitle className="text-sm md:text-base mb-1 line-clamp-2">{product.name}</CardTitle> {/* Smaller title, allow 2 lines */}
-                 <p className="text-xs md:text-sm text-muted-foreground font-semibold">{product.price.toFixed(2)} ₽</p>
+              <CardContent className="p-1.5 md:p-2 flex-grow"> {/* Reduced padding */}
+                 <CardTitle className="text-xs md:text-sm font-medium mb-0.5 line-clamp-2 leading-tight"> {/* Reduced font-size, weight, margin, leading */}
+                     {product.name} {product.volume && <span className="text-muted-foreground font-normal">({product.volume})</span>}
+                 </CardTitle>
+                 <p className="text-xs md:text-sm text-foreground font-semibold">{product.price.toFixed(0)} ₽</p> {/* Removed decimals */}
               </CardContent>
-              <CardFooter className="p-2 pt-0 mt-auto"> {/* Reduced padding */}
-                <Button onClick={() => addToOrder(product)} className="w-full h-8 text-xs" variant="outline"> {/* Smaller button */}
+              <CardFooter className="p-1.5 md:p-2 pt-0 mt-auto"> {/* Reduced padding */}
+                <Button onClick={() => addToOrder(product)} className="w-full h-7 md:h-8 text-xs" variant="outline"> {/* Smaller button */}
                   <PlusCircle className="mr-1 h-3 w-3" /> Добавить
                 </Button>
               </CardFooter>
@@ -189,28 +224,29 @@ export function OrderBuilder() {
 
       {/* Current Order */}
       <div className="lg:col-span-1">
-        <Card className="sticky top-8 shadow-lg">
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
+        <Card className="sticky top-4 md:top-8 shadow-md"> {/* Reduced shadow */}
+          <CardHeader className="p-3 md:p-4"> {/* Reduced padding */}
+            <CardTitle className="text-base md:text-lg flex items-center justify-between"> {/* Smaller title */}
               <span>Текущий заказ</span>
-               <ShoppingCart className="h-5 w-5 text-primary" />
+               <ShoppingCart className="h-4 w-4 md:h-5 md:w-5 text-primary" />
             </CardTitle>
           </CardHeader>
-          <CardContent className="max-h-[400px] overflow-y-auto">
+          <CardContent className="max-h-[300px] md:max-h-[400px] overflow-y-auto p-3 md:p-4 pt-0"> {/* Reduced padding */}
             {order.length === 0 ? (
-              <p className="text-muted-foreground text-center py-4">Ваш заказ пуст.</p>
+              <p className="text-muted-foreground text-center py-3 md:py-4 text-sm">Ваш заказ пуст.</p>
             ) : (
-              <ul className="space-y-3">
+              <ul className="space-y-2 md:space-y-3">
                 {order.map((item) => (
                   <li key={item.id} className="flex justify-between items-center text-sm">
                     <div>
-                      <span className="font-medium">{item.name}</span>
-                      <Badge variant="secondary" className="ml-2 px-1.5 py-0.5 text-xs">{item.quantity}</Badge> {/* Smaller badge */}
+                      <span className="font-medium">{item.name} {item.volume && <span className="text-xs text-muted-foreground">({item.volume})</span>}</span>
+                      <Badge variant="secondary" className="ml-1.5 px-1 py-0 text-[10px] md:text-xs">{item.quantity}</Badge> {/* Smaller badge */}
                     </div>
-                    <div className="flex items-center gap-1"> {/* Reduced gap */}
-                       <span className="font-mono text-xs">{(item.price * item.quantity).toFixed(2)} ₽</span> {/* Smaller price text */}
-                      <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => removeFromOrder(item.id)}> {/* Smaller button */}
+                    <div className="flex items-center gap-1 md:gap-1.5"> {/* Reduced gap */}
+                       <span className="font-mono text-xs md:text-sm whitespace-nowrap">{(item.price * item.quantity).toFixed(0)} ₽</span> {/* Smaller price text, removed decimals */}
+                      <Button variant="ghost" size="icon" className="h-5 w-5 md:h-6 md:w-6" onClick={() => removeFromOrder(item.id)}> {/* Smaller button */}
                          <MinusCircle className="h-3 w-3 text-destructive" /> {/* Smaller icon */}
+                         <span className="sr-only">Убрать 1 {item.name}</span>
                       </Button>
                     </div>
 
@@ -220,18 +256,18 @@ export function OrderBuilder() {
             )}
           </CardContent>
           <Separator />
-          <CardFooter className="flex flex-col gap-3 pt-3"> {/* Reduced gap and padding */}
+          <CardFooter className="flex flex-col gap-2 md:gap-3 p-3 md:p-4 pt-3"> {/* Reduced gap and padding */}
              {order.length > 0 && (
                 <>
-                 <div className="flex justify-between w-full font-semibold text-base"> {/* Slightly smaller total */}
+                 <div className="flex justify-between w-full font-semibold text-sm md:text-base"> {/* Slightly smaller total */}
                     <span>Итого:</span>
-                    <span>{totalPrice.toFixed(2)} ₽</span>
+                    <span>{totalPrice.toFixed(0)} ₽</span> {/* Removed decimals */}
                  </div>
                  <div className="flex gap-2 w-full">
-                    <Button onClick={handleCheckout} className="flex-1 h-9 text-sm bg-accent hover:bg-accent/90"> {/* Smaller button */}
+                    <Button onClick={handleCheckout} className="flex-1 h-8 md:h-9 text-xs md:text-sm bg-accent hover:bg-accent/90"> {/* Smaller button */}
                     Оформить заказ
                     </Button>
-                    <Button variant="outline" onClick={clearOrder} className="flex-1 h-9 text-sm"> {/* Smaller button */}
+                    <Button variant="outline" onClick={clearOrder} className="h-8 md:h-9 text-xs md:text-sm px-3"> {/* Smaller button */}
                         <Trash2 className="mr-1 h-3 w-3" /> Очистить {/* Smaller icon */}
                     </Button>
                  </div>
@@ -239,7 +275,7 @@ export function OrderBuilder() {
                 </>
              )}
               {order.length === 0 && (
-                 <p className="text-muted-foreground text-center text-sm w-full">Добавьте товары, чтобы увидеть итоговую сумму.</p>
+                 <p className="text-muted-foreground text-center text-xs md:text-sm w-full">Добавьте товары, чтобы увидеть итоговую сумму.</p>
               )}
           </CardFooter>
         </Card>
@@ -247,3 +283,4 @@ export function OrderBuilder() {
     </div>
   );
 }
+
