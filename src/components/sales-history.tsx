@@ -33,7 +33,7 @@ import * as XLSX from 'xlsx';
 import type { DateRange } from 'react-day-picker';
 import type { Order, SalesHistoryItem, PaymentMethod } from '@/types/order'; // Import Order, SalesHistoryItem, PaymentMethod
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'; // Import ScrollBar
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   AlertDialog,
@@ -248,11 +248,13 @@ export function SalesHistory() {
                   return sortConfig.direction === 'asc' ? comparison : -comparison;
               }
               // Handle numeric sorting (Total Price)
-              else if (typeof aValue === 'number' && typeof bValue === 'number') {
+
+               if (typeof aValue === 'number' && typeof bValue === 'number') {
                  if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
                  if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
                  return 0;
               }
+
 
               // Fallback for unexpected types or equality
               return 0;
@@ -471,23 +473,23 @@ export function SalesHistory() {
           <Table>
             <TableHeader className="sticky top-0 bg-background shadow-sm z-10">
               <TableRow>
-                 <TableHead className="w-[100px] md:w-[150px] hidden sm:table-cell text-xs md:text-sm px-2 md:px-4 cursor-pointer hover:bg-muted/50" onClick={() => requestSort('timestamp')}>
+                 <TableHead className="w-[100px] md:w-[150px] hidden sm:table-cell text-xs md:text-sm px-2 md:px-4 cursor-pointer hover:bg-muted/50 whitespace-nowrap" onClick={() => requestSort('timestamp')}> {/* Added whitespace-nowrap */}
                     <div className="flex items-center">
                       Дата {getSortIcon('timestamp')}
                     </div>
                  </TableHead>
-                 <TableHead className="text-xs md:text-sm px-2 md:px-4">Товары</TableHead>
-                 <TableHead className="w-[90px] md:w-[110px] text-xs md:text-sm px-2 md:px-4 cursor-pointer hover:bg-muted/50" onClick={() => requestSort('paymentMethod')}> {/* Added onClick for paymentMethod */}
+                 <TableHead className="text-xs md:text-sm px-2 md:px-4 whitespace-nowrap">Товары</TableHead> {/* Added whitespace-nowrap */}
+                 <TableHead className="w-[90px] md:w-[110px] text-xs md:text-sm px-2 md:px-4 cursor-pointer hover:bg-muted/50 whitespace-nowrap" onClick={() => requestSort('paymentMethod')}> {/* Added onClick, Added whitespace-nowrap */}
                      <div className="flex items-center"> {/* Added wrapper div */}
                        Оплата {getSortIcon('paymentMethod')} {/* Added icon */}
                      </div>
                  </TableHead>
-                 <TableHead className="text-right w-[80px] md:w-[100px] text-xs md:text-sm px-2 md:px-4 cursor-pointer hover:bg-muted/50" onClick={() => requestSort('totalPrice')}>
+                 <TableHead className="text-right w-[80px] md:w-[100px] text-xs md:text-sm px-2 md:px-4 cursor-pointer hover:bg-muted/50 whitespace-nowrap" onClick={() => requestSort('totalPrice')}> {/* Added whitespace-nowrap */}
                     <div className="flex items-center justify-end">
                       Итого {getSortIcon('totalPrice')}
                     </div>
                  </TableHead>
-                 <TableHead className="text-right w-[40px] md:w-[60px] px-2 md:px-4"></TableHead> {/* Header for delete button */}
+                 <TableHead className="text-right w-[40px] md:w-[60px] px-2 md:px-4 whitespace-nowrap"></TableHead> {/* Header for delete button, Added whitespace-nowrap */}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -500,18 +502,18 @@ export function SalesHistory() {
               ) : (
                 filteredAndSortedOrders.map((order) => ( // Use filteredAndSortedOrders
                   <TableRow key={order.id}>
-                    <TableCell className="font-medium hidden sm:table-cell text-xs md:text-sm px-2 md:px-4 py-2 md:py-3 align-top"> {/* Adjusted padding */}
+                    <TableCell className="font-medium hidden sm:table-cell text-xs md:text-sm px-2 md:px-4 py-2 md:py-3 align-top whitespace-nowrap"> {/* Adjusted padding, Added whitespace-nowrap */}
                       {format(parseISO(order.timestamp), 'dd.MM.yy HH:mm', { // Shorter date format
                         locale: ru,
                       })}
                     </TableCell>
-                    <TableCell className="px-2 md:px-4 py-2 md:py-3 align-top"> {/* Adjusted padding */}
+                    <TableCell className="px-2 md:px-4 py-2 md:py-3 align-top min-w-[150px]"> {/* Adjusted padding, Added min-width */}
                       <div className="flex flex-col gap-0.5">
-                        <div className="sm:hidden text-[10px] text-muted-foreground mb-1"> {/* Show date on mobile */}
+                        <div className="sm:hidden text-[10px] text-muted-foreground mb-1 whitespace-nowrap"> {/* Show date on mobile, Added whitespace-nowrap */}
                             {format(parseISO(order.timestamp), 'dd.MM.yy HH:mm', { locale: ru })}
                         </div>
                         {order.items.map((item, index) => (
-                         <div key={index} className="flex items-center text-xs md:text-sm leading-snug"> {/* Adjusted line height */}
+                         <div key={index} className="flex items-center text-xs md:text-sm leading-snug whitespace-nowrap"> {/* Adjusted line height, Added whitespace-nowrap */}
                             {item.name}
                             {item.volume && <span className="text-muted-foreground ml-1">({item.volume})</span>}
                             <Badge variant="secondary" className="ml-1.5 px-1 py-0 text-[9px] md:text-[10px] h-4">{item.quantity}</Badge> {/* Adjusted badge */}
@@ -519,17 +521,17 @@ export function SalesHistory() {
                         ))}
                       </div>
                     </TableCell>
-                     <TableCell className="text-xs md:text-sm px-2 md:px-4 py-2 md:py-3 align-top"> {/* Added Payment Method Cell */}
+                     <TableCell className="text-xs md:text-sm px-2 md:px-4 py-2 md:py-3 align-top whitespace-nowrap"> {/* Added Payment Method Cell, Added whitespace-nowrap */}
                         <div className="flex items-center gap-1 md:gap-1.5">
                             <PaymentMethodIcon method={order.paymentMethod} />
                             <span className="hidden md:inline">{order.paymentMethod || 'Н/У'}</span>
                             <span className="md:hidden text-muted-foreground">{/* Empty on mobile to save space, icon is enough */}</span>
                         </div>
                     </TableCell>
-                    <TableCell className="text-right font-mono text-xs md:text-sm px-2 md:px-4 py-2 md:py-3 align-top"> {/* Adjusted padding */}
+                    <TableCell className="text-right font-mono text-xs md:text-sm px-2 md:px-4 py-2 md:py-3 align-top whitespace-nowrap"> {/* Adjusted padding, Added whitespace-nowrap */}
                       {formatCurrency(order.totalPrice)}
                     </TableCell>
-                    <TableCell className="text-right px-2 md:px-4 py-2 md:py-3 align-top"> {/* Cell for delete button */}
+                    <TableCell className="text-right px-2 md:px-4 py-2 md:py-3 align-top whitespace-nowrap"> {/* Cell for delete button, Added whitespace-nowrap */}
                        <AlertDialog>
                            <AlertDialogTrigger asChild>
                                <Button variant="ghost" size="icon" className="h-7 w-7 md:h-8 md:w-8 text-destructive hover:text-destructive hover:bg-destructive/10">
@@ -558,6 +560,7 @@ export function SalesHistory() {
               )}
             </TableBody>
           </Table>
+           <ScrollBar orientation="horizontal" /> {/* Added horizontal scrollbar */}
         </ScrollArea>
       </CardContent>
     </Card>
@@ -565,3 +568,7 @@ export function SalesHistory() {
 }
 
 
+
+
+
+    
