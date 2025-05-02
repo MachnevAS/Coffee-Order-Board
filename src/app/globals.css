@@ -11,9 +11,9 @@ body {
     /* Light Theme derived from #6F4E37 (Coffee), #FFFDD0 (Cream), #CC6633 (Burnt Orange) */
     --background: 0 0% 96%; /* Cream -> #F5F5F5 */
     --foreground: 25 35% 15%; /* Darker Brown for text */
-    --card: 56 100% 95%; /* Lighter Cream */
+    --card: 0 0% 100%; /* Lighter Cream -> White #FFFFFF */
     --card-foreground: 25 35% 15%;
-    --popover: 56 100% 95%;
+    --popover: 0 0% 100%; /* Lighter Cream -> White #FFFFFF */
     --popover-foreground: 25 35% 15%;
     --primary: 25 35% 36%; /* Coffee Brown */
     --primary-foreground: 0 0% 96%; /* Cream -> #F5F5F5 */
