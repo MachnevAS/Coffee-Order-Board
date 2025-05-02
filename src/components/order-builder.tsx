@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
@@ -9,7 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import type { Product } from "@/types/product";
 import type { PaymentMethod, Order } from "@/types/order"; // Import Order and PaymentMethod types
-import { MinusCircle, PlusCircle, Trash2, CreditCard, Banknote, Smartphone, Search, ShoppingCart, SheetIcon } from "lucide-react"; // Re-added ShoppingCart for mobile badge
+import { MinusCircle, PlusCircle, Trash2, CreditCard, Banknote, Smartphone, Search, ShoppingCart } from "lucide-react"; // Re-added ShoppingCart for mobile badge
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input"; // Added Input
@@ -38,6 +37,7 @@ export function OrderBuilder() {
   const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
   const [isSheetOpen, setIsSheetOpen] = useState(false); // State for mobile sheet
+  const sheetTitleId = React.useId(); // Generate a unique ID for the sheet title
 
   useEffect(() => {
     setIsClient(true);
@@ -258,8 +258,12 @@ export function OrderBuilder() {
     // Component to render the order details (used in both Sheet and desktop Card)
     const OrderDetails = ({ isSheet = false }: { isSheet?: boolean }) => (
         <>
-          <CardHeader className={cn("p-3 md:p-4 flex-shrink-0", isSheet ? "pb-2" : "pb-3")}> {/* Adjusted padding and flex-shrink for header */}
-            <CardTitle className={cn("text-lg flex items-center justify-between", isSheet ? "" : "text-xl")}> {/* Adjusted desktop size */}
+          {/* Header remains part of OrderDetails, gets ID when in sheet */}
+          <CardHeader className={cn("p-3 md:p-4 flex-shrink-0", isSheet ? "pb-2" : "pb-3")}>
+            <CardTitle
+              id={isSheet ? sheetTitleId : undefined} // Assign ID only for the sheet
+              className={cn("text-lg flex items-center justify-between", isSheet ? "" : "text-xl")}
+            >
               <span>Текущий заказ</span>
              </CardTitle>
              {isSheet && <SheetClose className="absolute right-3 top-3" />}
@@ -475,7 +479,12 @@ export function OrderBuilder() {
                      )}
                    </Button>
               </SheetTrigger>
-              <SheetContent side="bottom" className="rounded-t-lg h-[75vh] flex flex-col p-0"> {/* Reduced height, added flex flex-col */}
+              {/* Add aria-labelledby referencing the title inside OrderDetails */}
+              <SheetContent
+                 side="bottom"
+                 className="rounded-t-lg h-[75vh] flex flex-col p-0"
+                 aria-labelledby={sheetTitleId} // Link to the title ID
+              >
                   <OrderDetails isSheet={true} />
               </SheetContent>
             </Sheet>
@@ -493,4 +502,3 @@ export function OrderBuilder() {
     </div>
   );
 }
-
