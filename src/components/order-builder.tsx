@@ -8,9 +8,11 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import type { Product } from "@/types/product";
-import { MinusCircle, PlusCircle, ShoppingCart, Trash2 } from "lucide-react";
+import type { PaymentMethod, Order } from "@/types/order"; // Import Order and PaymentMethod types
+import { MinusCircle, PlusCircle, ShoppingCart, Trash2, CreditCard, Banknote, Smartphone } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-// Removed import of getDefaultProducts
+import { cn } from "@/lib/utils";
+
 
 interface OrderItem extends Product {
   quantity: number;
@@ -20,6 +22,7 @@ export function OrderBuilder() {
   const [products, setProducts] = useState<Product[]>([]);
   const [order, setOrder] = useState<OrderItem[]>([]);
   const [totalPrice, setTotalPrice] = useState<number>(0);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
   const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
 
@@ -66,7 +69,7 @@ export function OrderBuilder() {
     setProducts(loadedProducts);
     console.log("OrderBuilder: setProducts called with:", loadedProducts.length, "products");
 
-  }, []); // Run only once on mount
+  }, [toast]); // Added toast dependency
 
 
   useEffect(() => {
@@ -154,6 +157,7 @@ export function OrderBuilder() {
 
   const clearOrder = () => {
     setOrder([]);
+    setSelectedPaymentMethod(null); // Reset payment method on clear
   };
 
   const handleCheckout = () => {
@@ -162,27 +166,45 @@ export function OrderBuilder() {
     if (order.length === 0) {
         toast({
             title: "Заказ пуст",
-            description: "Пожалуйста, добавьте товары в заказ перед оформлением.",
+            description: "Пожалуйста, добавьте товары в заказ.",
             variant: "destructive",
         });
         return;
     }
 
-    const orderData = {
+    if (!selectedPaymentMethod) {
+        toast({
+            title: "Выберите способ оплаты",
+            description: "Пожалуйста, укажите способ оплаты заказа.",
+            variant: "destructive",
+        });
+        return;
+    }
+
+    const orderData: Order = { // Use the Order type
         id: `order_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        items: order.map(item => ({ name: item.name, volume: item.volume, quantity: item.quantity, price: item.price })),
+        items: order.map(item => ({
+            id: item.id, // Keep id for potential future reference if needed
+            name: item.name,
+            volume: item.volume,
+            quantity: item.quantity,
+            price: item.price,
+            // Exclude imageUrl and dataAiHint from the saved order item
+        })),
         totalPrice: totalPrice,
         timestamp: new Date().toISOString(),
+        paymentMethod: selectedPaymentMethod, // Add selected payment method
     };
 
     try {
-      const pastOrders = JSON.parse(localStorage.getItem("coffeeOrders") || "[]");
+      // Ensure the loaded data is treated as Order[]
+      const pastOrders: Order[] = JSON.parse(localStorage.getItem("coffeeOrders") || "[]");
       pastOrders.push(orderData);
       localStorage.setItem("coffeeOrders", JSON.stringify(pastOrders));
 
       toast({
         title: "Заказ оформлен!",
-        description: `Итого: ${totalPrice.toFixed(2)} ₽. Ваш заказ сохранен.`,
+        description: `Итого: ${totalPrice.toFixed(0)} ₽ (${selectedPaymentMethod}). Ваш заказ сохранен.`,
       });
       clearOrder();
     } catch (error) {
@@ -236,8 +258,8 @@ export function OrderBuilder() {
                    <Image
                     src={product.imageUrl || `https://picsum.photos/100/80?random=${product.id}`}
                     alt={product.name}
-                    layout="fill"
-                    objectFit="cover"
+                    fill // Use fill instead of layout="fill"
+                    style={{objectFit:"cover"}} // Use style object for objectFit
                     data-ai-hint={product.dataAiHint || 'кофе'}
                     className="bg-muted"
                     sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, (max-width: 1280px) 33vw, 25vw"
@@ -303,8 +325,38 @@ export function OrderBuilder() {
                     <span>Итого:</span>
                     <span>{totalPrice.toFixed(0)} ₽</span>
                  </div>
-                 <div className="flex gap-2 w-full">
-                    <Button onClick={handleCheckout} className="flex-1 h-8 md:h-9 text-xs md:text-sm bg-accent hover:bg-accent/90">
+
+                 {/* Payment Method Selection */}
+                 <div className="w-full pt-1">
+                    <p className="text-xs text-muted-foreground mb-1.5">Способ оплаты:</p>
+                    <div className="grid grid-cols-3 gap-1.5 md:gap-2">
+                        {(['Наличные', 'Карта', 'Перевод'] as PaymentMethod[]).map((method) => (
+                           <Button
+                            key={method}
+                            variant={selectedPaymentMethod === method ? "default" : "outline"}
+                            onClick={() => setSelectedPaymentMethod(method)}
+                            className={cn(
+                                "h-8 md:h-9 text-xs md:text-sm flex-col items-center justify-center px-1 py-1 leading-tight", // Added flex-col, adjusted padding/line-height
+                                selectedPaymentMethod === method ? 'bg-accent hover:bg-accent/90 text-accent-foreground' : ''
+                            )}
+                            size="sm" // Use sm size for smaller buttons
+                           >
+                             {method === 'Наличные' && <Banknote className="h-3 w-3 md:h-4 md:w-4 mb-0.5" />}
+                             {method === 'Карта' && <CreditCard className="h-3 w-3 md:h-4 md:w-4 mb-0.5" />}
+                             {method === 'Перевод' && <Smartphone className="h-3 w-3 md:h-4 md:w-4 mb-0.5" />}
+                             {method}
+                           </Button>
+                        ))}
+                    </div>
+                 </div>
+
+
+                 <div className="flex gap-2 w-full pt-2">
+                    <Button
+                        onClick={handleCheckout}
+                        className="flex-1 h-8 md:h-9 text-xs md:text-sm bg-primary hover:bg-primary/90" // Changed to primary color
+                        disabled={!selectedPaymentMethod} // Disable if no payment method selected
+                    >
                     Оформить заказ
                     </Button>
                     <Button variant="outline" onClick={clearOrder} className="h-8 md:h-9 text-xs md:text-sm px-3">
@@ -323,3 +375,4 @@ export function OrderBuilder() {
     </div>
   );
 }
+

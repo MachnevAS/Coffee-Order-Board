@@ -17,11 +17,12 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { Calendar as CalendarIcon, Download, Trash2 } from 'lucide-react'; // Added Trash2
+import { Calendar as CalendarIcon, Download, Trash2, CreditCard, Banknote, Smartphone } from 'lucide-react'; // Added payment icons
 import { format, parseISO, startOfDay, endOfDay, isValid } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import * as XLSX from 'xlsx';
 import type { DateRange } from 'react-day-picker';
+import type { Order, OrderItem, PaymentMethod } from '@/types/order'; // Import Order, OrderItem, PaymentMethod
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -37,20 +38,10 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"; // Added AlertDialog
 import { useToast } from "@/hooks/use-toast"; // Added useToast
+import { cn } from '@/lib/utils';
 
-interface OrderItem {
-  name: string;
-  volume?: string; // Optional volume
-  quantity: number;
-  price: number;
-}
 
-interface Order {
-  id: string;
-  items: OrderItem[];
-  totalPrice: number;
-  timestamp: string; // ISO string format
-}
+// No need to redefine OrderItem or Order here, they are imported
 
 export function SalesHistory() {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -66,14 +57,14 @@ export function SalesHistory() {
             try {
                 const parsedOrders: Order[] = JSON.parse(storedOrders);
                 // Ensure orders are sorted by timestamp descending initially
-                 if (Array.isArray(parsedOrders)) {
+                 if (Array.isArray(parsedOrders) && parsedOrders.every(o => typeof o.id === 'string' && typeof o.timestamp === 'string')) { // Basic validation
                     setOrders(
                         parsedOrders.sort(
                             (a, b) => parseISO(b.timestamp).getTime() - parseISO(a.timestamp).getTime()
                         )
                     );
                  } else {
-                     console.error('Parsed orders is not an array:', parsedOrders);
+                     console.error('Parsed orders is not a valid array or structure:', parsedOrders);
                      setOrders([]);
                      localStorage.removeItem('coffeeOrders'); // Clear invalid data
                  }
@@ -112,6 +103,13 @@ export function SalesHistory() {
                    // Note: We might not need to dispatch a storage event here unless
                    // another component specifically needs to react *instantly* to
                    // order history changes made within this component.
+                   // If OrderBuilder needs live updates on deletion, dispatch here.
+                     window.dispatchEvent(new StorageEvent('storage', {
+                        key: 'coffeeOrders',
+                        newValue: newOrdersJson,
+                        oldValue: currentStoredValue,
+                        storageArea: localStorage,
+                    }));
                }
            } catch (e) {
                console.error("SalesHistory: Failed to save orders to localStorage", e);
@@ -154,6 +152,7 @@ export function SalesHistory() {
       'Товары': order.items
         .map((item) => `${item.name}${item.volume ? ` (${item.volume})` : ''} (x${item.quantity})`) // Include volume in export
         .join(', '),
+      'Способ оплаты': order.paymentMethod || 'Не указан', // Add payment method column
       'Итого (₽)': order.totalPrice.toFixed(0), // Format without decimals
     }));
 
@@ -166,6 +165,7 @@ export function SalesHistory() {
       { wch: 25 }, // Order ID
       { wch: 20 }, // Timestamp
       { wch: 60 }, // Items (increased width for volume)
+      { wch: 15 }, // Payment Method
       { wch: 15 }, // Total Price
     ];
 
@@ -194,6 +194,16 @@ export function SalesHistory() {
   const formatCurrency = (amount: number) => {
     return `${amount.toFixed(0)} ₽`; // Format without decimals
   };
+
+   const PaymentMethodIcon = ({ method }: { method: PaymentMethod | undefined }) => {
+      const iconSize = "h-3.5 w-3.5 md:h-4 md:w-4";
+      switch (method) {
+        case 'Наличные': return <Banknote className={cn(iconSize, "text-green-600")} />;
+        case 'Карта': return <CreditCard className={cn(iconSize, "text-blue-600")} />;
+        case 'Перевод': return <Smartphone className={cn(iconSize, "text-purple-600")} />;
+        default: return null;
+      }
+   };
 
   if (!isClient) {
     return <Card><CardHeader><CardTitle>История продаж</CardTitle></CardHeader><CardContent><p className="text-muted-foreground">Загрузка истории...</p></CardContent></Card>;
@@ -263,6 +273,7 @@ export function SalesHistory() {
               <TableRow>
                 <TableHead className="w-[100px] md:w-[150px] hidden sm:table-cell text-xs md:text-sm px-2 md:px-4">Дата</TableHead>
                 <TableHead className="text-xs md:text-sm px-2 md:px-4">Товары</TableHead>
+                <TableHead className="w-[90px] md:w-[110px] text-xs md:text-sm px-2 md:px-4">Оплата</TableHead> {/* Added Payment Method Header */}
                 <TableHead className="text-right w-[80px] md:w-[100px] text-xs md:text-sm px-2 md:px-4">Итого</TableHead>
                 <TableHead className="text-right w-[40px] md:w-[60px] px-2 md:px-4"></TableHead> {/* Header for delete button */}
               </TableRow>
@@ -270,7 +281,7 @@ export function SalesHistory() {
             <TableBody>
               {filteredOrders.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground py-6 md:py-8 text-sm"> {/* Increased colspan */}
+                  <TableCell colSpan={5} className="text-center text-muted-foreground py-6 md:py-8 text-sm"> {/* Increased colspan */}
                     Нет заказов за выбранный период.
                   </TableCell>
                 </TableRow>
@@ -296,6 +307,13 @@ export function SalesHistory() {
                         ))}
                       </div>
                     </TableCell>
+                     <TableCell className="text-xs md:text-sm px-2 md:px-4 py-2 md:py-3 align-top"> {/* Added Payment Method Cell */}
+                        <div className="flex items-center gap-1 md:gap-1.5">
+                            <PaymentMethodIcon method={order.paymentMethod} />
+                            <span className="hidden md:inline">{order.paymentMethod || 'Н/У'}</span>
+                            <span className="md:hidden text-muted-foreground">{/* Empty on mobile to save space, icon is enough */}</span>
+                        </div>
+                    </TableCell>
                     <TableCell className="text-right font-mono text-xs md:text-sm px-2 md:px-4 py-2 md:py-3 align-top"> {/* Adjusted padding */}
                       {formatCurrency(order.totalPrice)}
                     </TableCell>
@@ -311,7 +329,7 @@ export function SalesHistory() {
                                <AlertDialogHeader>
                                    <AlertDialogTitle>Вы уверены?</AlertDialogTitle>
                                    <AlertDialogDescription>
-                                       Это действие необратимо. Заказ от {format(parseISO(order.timestamp), 'dd.MM.yyyy HH:mm', { locale: ru })} на сумму {formatCurrency(order.totalPrice)} будет удален навсегда.
+                                       Это действие необратимо. Заказ от {format(parseISO(order.timestamp), 'dd.MM.yyyy HH:mm', { locale: ru })} на сумму {formatCurrency(order.totalPrice)} ({order.paymentMethod}) будет удален навсегда.
                                    </AlertDialogDescription>
                                </AlertDialogHeader>
                                <AlertDialogFooter>
