@@ -385,7 +385,7 @@ export function ProductManagement() {
        {/* Existing Products List */}
        <Card className="shadow-md flex flex-col h-full"> {/* Ensure card takes full height */}
         <CardHeader className="flex flex-row items-center justify-between pb-4"> {/* Added pb-4 */}
-          <CardTitle className="text-lg md:text-xl">Существующие товары</CardTitle>
+          <CardTitle className="text-lg md:text-xl">Существующие товары ({products.length})</CardTitle>
            <div className="flex gap-2"> {/* Wrapper for the buttons */}
                 <TooltipProvider>
                     <Tooltip>
