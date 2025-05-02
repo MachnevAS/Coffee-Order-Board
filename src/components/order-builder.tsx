@@ -150,10 +150,17 @@ export function OrderBuilder() {
           item.id === productId ? { ...item, quantity: item.quantity - 1 } : item
         );
       } else {
+        // Completely remove the item if quantity is 1 or less
         return prevOrder.filter((item) => item.id !== productId);
       }
     });
   };
+
+  // New function to completely remove an item regardless of quantity
+  const removeEntireItem = (productId: string) => {
+     setOrder((prevOrder) => prevOrder.filter((item) => item.id !== productId));
+  };
+
 
   const clearOrder = () => {
     setOrder([]);
@@ -184,17 +191,19 @@ export function OrderBuilder() {
     const orderData: Order = { // Use the Order type
         id: `order_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         items: order.map(item => ({
-            id: item.id, // Keep id for potential future reference if needed
+            // Keep only necessary fields for the saved order item
+            id: item.id,
             name: item.name,
             volume: item.volume,
-            quantity: item.quantity,
             price: item.price,
-            // Exclude imageUrl and dataAiHint from the saved order item
+            quantity: item.quantity,
+            // Explicitly exclude imageUrl and dataAiHint from the saved order item
         })),
         totalPrice: totalPrice,
         timestamp: new Date().toISOString(),
         paymentMethod: selectedPaymentMethod, // Add selected payment method
     };
+
 
     try {
       // Ensure the loaded data is treated as Order[]
@@ -299,19 +308,29 @@ export function OrderBuilder() {
             ) : (
               <ul className="space-y-2 md:space-y-3">
                 {order.map((item) => (
-                  <li key={item.id} className="flex justify-between items-center text-sm">
-                    <div>
-                      <span className="font-medium">{item.name} {item.volume && <span className="text-xs text-muted-foreground">({item.volume})</span>}</span>
-                      <Badge variant="secondary" className="ml-1.5 px-1 py-0 text-[10px] md:text-xs">{item.quantity}</Badge>
-                    </div>
-                    <div className="flex items-center gap-1 md:gap-1.5">
+                  <li key={item.id} className="flex justify-between items-center text-sm gap-2">
+                    <div className="flex-grow overflow-hidden"> {/* Allow name to take space */}
+                      <span className="font-medium block truncate">{item.name} {item.volume && <span className="text-xs text-muted-foreground">({item.volume})</span>}</span>
                        <span className="font-mono text-xs md:text-sm whitespace-nowrap">{(item.price * item.quantity).toFixed(0)} ₽</span>
-                      <Button variant="ghost" size="icon" className="h-5 w-5 md:h-6 md:w-6" onClick={() => removeFromOrder(item.id)}>
-                         <MinusCircle className="h-3 w-3 text-destructive" />
+                    </div>
+                    <div className="flex items-center gap-1 md:gap-1.5 flex-shrink-0"> {/* Prevent controls from shrinking */}
+                       <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7" onClick={() => removeFromOrder(item.id)}>
+                         <MinusCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
                          <span className="sr-only">Убрать 1 {item.name}</span>
                       </Button>
+                       <Badge variant="secondary" className="px-1.5 py-0 text-xs md:text-sm font-medium min-w-[24px] justify-center"> {/* Quantity display */}
+                          {item.quantity}
+                       </Badge>
+                       <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7" onClick={() => addToOrder(item)}>
+                          <PlusCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
+                          <span className="sr-only">Добавить 1 {item.name}</span>
+                       </Button>
+                       {/* Add a separate button to remove the item completely */}
+                       <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7 text-destructive/80 hover:text-destructive hover:bg-destructive/10 ml-1" onClick={() => removeEntireItem(item.id)}>
+                           <Trash2 className="h-3.5 w-3.5" />
+                           <span className="sr-only">Удалить {item.name} из заказа</span>
+                       </Button>
                     </div>
-
                   </li>
                 ))}
               </ul>
