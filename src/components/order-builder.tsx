@@ -39,7 +39,7 @@ export function OrderBuilder() {
   const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
   const [isSheetOpen, setIsSheetOpen] = useState(false); // State for mobile sheet
-  // Removed useId for sheet title as we'll use explicit SheetTitle now
+  const orderSheetTitleId = React.useId(); // Generate a unique ID
 
   useEffect(() => {
     setIsClient(true);
@@ -257,12 +257,13 @@ export function OrderBuilder() {
     // Component to render the order details (used in both Sheet and desktop Card)
     const OrderDetails = ({ isSheet = false }: { isSheet?: boolean }) => (
         <>
-          {/* Title for both Desktop and Mobile Sheet */}
+          {/* Title for Desktop, part of Header for Sheet */}
           <CardHeader className={cn(
              "p-3 md:p-4 flex-shrink-0",
              isSheet ? "pb-2 border-b" : "pb-3" // Add border bottom only for sheet header
            )}>
              <CardTitle
+              id={isSheet ? orderSheetTitleId : undefined} // Assign ID only for Sheet title
               className={cn(
                 "text-lg flex items-center justify-between",
                  isSheet ? "text-lg" : "text-xl" // Adjust title size for sheet
@@ -446,7 +447,7 @@ export function OrderBuilder() {
                     />
                 </div>
               </CardHeader>
-              <CardContent className="p-1.5 md:p-2 flex-grow flex items-start justify-between gap-1"> {/* Adjusted padding & flex */}
+              <CardContent className="p-1.5 md:p-2 flex-grow flex items-center justify-between gap-1"> {/* Adjusted padding & flex items-center */}
                  <div className="flex-grow"> {/* Wrapper for name and volume */}
                      <CardTitle className="text-xs md:text-sm font-medium mb-0 line-clamp-2 leading-tight"> {/* Removed mb-0.5 */}
                          {product.name} {product.volume && <span className="text-muted-foreground font-normal">({product.volume})</span>}
@@ -490,13 +491,10 @@ export function OrderBuilder() {
               <SheetContent
                  side="bottom"
                  className="rounded-t-lg h-[75vh] flex flex-col p-0"
-                 aria-describedby={"order-sheet-title"} // Use static ID or generate one
+                 aria-labelledby={orderSheetTitleId} // Reference the title ID for accessibility
+                 aria-describedby={undefined} // Remove this if no separate description needed
               >
-                  {/* Use SheetHeader and SheetTitle for accessibility */}
-                  <SheetHeader className="sr-only">
-                    <SheetTitle id="order-sheet-title">Текущий заказ</SheetTitle>
-                  </SheetHeader>
-                  {/* Now the visible title is part of OrderDetails */}
+                  {/* OrderDetails now contains the accessible title within its CardHeader */}
                   <OrderDetails isSheet={true} />
               </SheetContent>
             </Sheet>
