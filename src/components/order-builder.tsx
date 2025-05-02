@@ -166,9 +166,6 @@ export function OrderBuilder() {
       }
     });
     // REMOVED: Automatic sheet opening logic
-    // if (order.length === 0 && !isSheetOpen && window.innerWidth < 1024) {
-    //    setIsSheetOpen(true);
-    // }
   };
 
     const removeFromOrder = (productId: string) => {
@@ -259,14 +256,22 @@ export function OrderBuilder() {
     // Component to render the order details (used in both Sheet and desktop Card)
     const OrderDetails = ({ isSheet = false }: { isSheet?: boolean }) => (
         <>
-          {/* Visible Title for Desktop, remains part of OrderDetails */}
-          <CardHeader className={cn("p-3 md:p-4 flex-shrink-0", isSheet ? "pb-2" : "pb-3")}>
+          {/* Title for both Desktop and Mobile Sheet */}
+          <CardHeader className={cn(
+             "p-3 md:p-4 flex-shrink-0",
+             isSheet ? "pb-2 border-b" : "pb-3" // Add border bottom only for sheet header
+           )}>
              <CardTitle
-              className={cn("text-lg flex items-center justify-between", isSheet ? "sr-only" : "text-xl")} // Hide visually on sheet
+              className={cn(
+                "text-lg flex items-center justify-between",
+                 isSheet ? "text-lg" : "text-xl" // Adjust title size for sheet
+               )}
             >
               <span>Текущий заказ</span>
+              {/* Close button only for sheet */}
+              {isSheet && <SheetClose className="relative -top-1 -right-1" />}
              </CardTitle>
-             {isSheet && <SheetClose className="absolute right-3 top-3" />}
+
           </CardHeader>
 
           {/* CardContent now correctly enables ScrollArea to work within flex layout */}
@@ -472,7 +477,7 @@ export function OrderBuilder() {
                               {order.reduce((sum, item) => sum + item.quantity, 0)} поз.
                             </Badge>
                           )}
-                        <span>Текущий заказ</span> {/* Changed label */}
+                        <span>Корзина</span> {/* Changed label back to "Корзина" */}
                      </div>
                      {totalPrice > 0 && (
                         <span className="font-semibold">{totalPrice.toFixed(0)} ₽</span>
@@ -482,12 +487,13 @@ export function OrderBuilder() {
               <SheetContent
                  side="bottom"
                  className="rounded-t-lg h-[75vh] flex flex-col p-0"
-                 // aria-labelledby removed, using explicit SheetTitle now
+                 aria-describedby={undefined} // Removed default aria-describedby
               >
-                  {/* Add a visually hidden title for accessibility */}
-                  <SheetHeader className="sr-only">
+                  {/* Add a visually hidden title for accessibility - KEPT for now */}
+                  {/* <SheetHeader className="sr-only">
                     <SheetTitle>Текущий заказ</SheetTitle>
-                  </SheetHeader>
+                  </SheetHeader> */}
+                  {/* Now the visible title is part of OrderDetails */}
                   <OrderDetails isSheet={true} />
               </SheetContent>
             </Sheet>
