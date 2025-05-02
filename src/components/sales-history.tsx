@@ -31,7 +31,7 @@ import { format, parseISO, startOfDay, endOfDay, isValid } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import * as XLSX from 'xlsx';
 import type { DateRange } from 'react-day-picker';
-import type { Order, OrderItem, PaymentMethod } from '@/types/order'; // Import Order, OrderItem, PaymentMethod
+import type { Order, SalesHistoryItem, PaymentMethod } from '@/types/order'; // Import Order, SalesHistoryItem, PaymentMethod
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';

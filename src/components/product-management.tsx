@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import type { Product } from "@/types/product";
-import { PlusCircle, Edit, Trash2, Save, X, FilePlus2, Search, Trash, SlidersHorizontal, ArrowDownAZ, ArrowDownZA, ArrowDown01, ArrowDown10 } from "lucide-react"; // Added sorting icons
+import { PlusCircle, Edit, Trash2, Save, X, FilePlus2, Search, Trash, SlidersHorizontal, ArrowDownAZ, ArrowDownZA, ArrowDown01, ArrowDown10, TrendingUp } from "lucide-react"; // Added sorting icons, TrendingUp
 import { getRawProductData } from "@/lib/product-defaults"; // Import defaults and raw data getter
 import {
   AlertDialog,
@@ -49,6 +49,7 @@ import {
 } from "@/components/ui/tooltip"; // Import Tooltip components
 import { ProductListItem } from './product-list-item'; // Import the new component
 import { cn } from "@/lib/utils"; // Import cn utility
+import type { Order, SalesHistoryItem } from "@/types/order"; // Import Order and SalesHistoryItem
 
 
 const productSchema = z.object({
@@ -60,7 +61,7 @@ const productSchema = z.object({
 });
 
 type ProductFormData = z.infer<typeof productSchema>;
-type SortOption = 'default' | 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc'; // Added sort type
+type SortOption = 'default' | 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc' | 'popularity-desc'; // Added sort type
 
 
 export function ProductManagement() {
@@ -183,6 +184,8 @@ export function ProductManagement() {
 
   // Filter and sort products based on search term and sort option
   const filteredAndSortedProducts = useMemo(() => {
+    if (!isClient) return []; // Return empty array on server
+
     let result = [...products]; // Create a copy to avoid mutating original state
 
     // 1. Filter by search term
@@ -207,6 +210,27 @@ export function ProductManagement() {
        case 'price-desc':
          result.sort((a, b) => b.price - a.price);
          break;
+       case 'popularity-desc': {
+        const popularityMap = new Map<string, number>();
+        try {
+          const storedOrders = localStorage.getItem('coffeeOrders');
+          if (storedOrders) {
+            const pastOrders: Order[] = JSON.parse(storedOrders);
+             if (Array.isArray(pastOrders)) {
+                pastOrders.forEach(ord => {
+                    ord.items.forEach(item => {
+                    popularityMap.set(item.id, (popularityMap.get(item.id) || 0) + item.quantity);
+                    });
+                });
+             }
+          }
+        } catch (e) {
+          console.error("Error reading or parsing sales history for sorting:", e);
+          // Proceed without popularity data if error occurs
+        }
+        result.sort((a, b) => (popularityMap.get(b.id) || 0) - (popularityMap.get(a.id) || 0));
+        break;
+       }
        case 'default':
        default:
          // No sorting applied, maintain original order (after filtering)
@@ -215,7 +239,7 @@ export function ProductManagement() {
      }
 
     return result;
-  }, [products, searchTerm, sortOption]);
+  }, [products, searchTerm, sortOption, isClient]); // Added isClient
 
 
   const onSubmit = (data: ProductFormData) => {
@@ -520,12 +544,16 @@ export function ProductManagement() {
                        </DropdownMenuItem>
                        <DropdownMenuItem onSelect={() => setSortOption('price-asc')} className={cn(sortOption === 'price-asc' && 'bg-accent')}>
                            <ArrowDown01 className="mr-2 h-4 w-4" />
-                           <span>Цене (по возрастанию)</span>
+                           <span>Цене (возрастание)</span>
                        </DropdownMenuItem>
                        <DropdownMenuItem onSelect={() => setSortOption('price-desc')} className={cn(sortOption === 'price-desc' && 'bg-accent')}>
                            <ArrowDown10 className="mr-2 h-4 w-4" />
-                           <span>Цене (по убыванию)</span>
+                           <span>Цене (убывание)</span>
                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => setSortOption('popularity-desc')} className={cn(sortOption === 'popularity-desc' && 'bg-accent')}>
+                            <TrendingUp className="mr-2 h-4 w-4" />
+                            <span>Популярности (сначала топ)</span>
+                        </DropdownMenuItem>
                        <DropdownMenuSeparator />
                        <DropdownMenuItem onSelect={() => setSortOption('default')} className={cn(sortOption === 'default' && 'bg-accent')}>
                            <span className="mr-2 h-4 w-4"></span>
