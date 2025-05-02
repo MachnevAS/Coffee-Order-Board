@@ -25,19 +25,27 @@ export function OrderBuilder() {
     setIsClient(true);
     const storedProducts = localStorage.getItem("coffeeProducts");
     if (storedProducts) {
-      setProducts(JSON.parse(storedProducts));
+      try {
+        setProducts(JSON.parse(storedProducts));
+      } catch (e) {
+        console.error("Failed to parse products from localStorage", e);
+        setProducts(getDefaultProducts());
+        localStorage.setItem("coffeeProducts", JSON.stringify(getDefaultProducts()));
+      }
     } else {
        // Add some default products if none are found in local storage
-       const defaultProducts: Product[] = [
-        { id: '1', name: 'Эспрессо', price: 150, imageUrl: 'https://picsum.photos/200/150?random=1', dataAiHint: 'espresso coffee' },
-        { id: '2', name: 'Латте', price: 250, imageUrl: 'https://picsum.photos/200/150?random=2', dataAiHint: 'latte coffee art' },
-        { id: '3', name: 'Капучино', price: 200, imageUrl: 'https://picsum.photos/200/150?random=3', dataAiHint: 'cappuccino froth' },
-        { id: '4', name: 'Американо', price: 180, imageUrl: 'https://picsum.photos/200/150?random=4', dataAiHint: 'americano black coffee' },
-      ];
-      setProducts(defaultProducts);
-      localStorage.setItem("coffeeProducts", JSON.stringify(defaultProducts));
+       setProducts(getDefaultProducts());
+       localStorage.setItem("coffeeProducts", JSON.stringify(getDefaultProducts()));
     }
   }, []);
+
+  const getDefaultProducts = (): Product[] => [
+      { id: '1', name: 'Эспрессо', price: 150, imageUrl: 'https://picsum.photos/200/150?random=1', dataAiHint: 'espresso coffee' },
+      { id: '2', name: 'Латте', price: 250, imageUrl: 'https://picsum.photos/200/150?random=2', dataAiHint: 'latte coffee art' },
+      { id: '3', name: 'Капучино', price: 200, imageUrl: 'https://picsum.photos/200/150?random=3', dataAiHint: 'cappuccino froth' },
+      { id: '4', name: 'Американо', price: 180, imageUrl: 'https://picsum.photos/200/150?random=4', dataAiHint: 'americano black coffee' },
+  ];
+
 
   useEffect(() => {
     if (isClient) {
@@ -89,6 +97,7 @@ export function OrderBuilder() {
     }
 
     const orderData = {
+        id: `order_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`, // Add unique ID
         items: order.map(item => ({ name: item.name, quantity: item.quantity, price: item.price })),
         totalPrice: totalPrice,
         timestamp: new Date().toISOString(),
@@ -117,7 +126,28 @@ export function OrderBuilder() {
 
 
   if (!isClient) {
-    return <div>Загрузка товаров...</div>; // Or a skeleton loader
+    // Simple text loader for server-side rendering or before hydration
+    return (
+         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+             <div className="lg:col-span-2">
+                <h2 className="text-2xl font-semibold mb-4 text-primary">Доступные товары</h2>
+                <p className="text-muted-foreground">Загрузка товаров...</p>
+             </div>
+             <div className="lg:col-span-1">
+                 <Card className="sticky top-8 shadow-lg">
+                    <CardHeader>
+                       <CardTitle className="flex items-center justify-between">
+                        <span>Текущий заказ</span>
+                        <ShoppingCart className="h-5 w-5 text-primary" />
+                       </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <p className="text-muted-foreground text-center py-4">Загрузка...</p>
+                    </CardContent>
+                 </Card>
+             </div>
+         </div>
+    );
   }
 
   return (
@@ -128,28 +158,27 @@ export function OrderBuilder() {
         {products.length === 0 ? (
            <p className="text-muted-foreground">Товары отсутствуют. Добавьте их во вкладке "Управление товарами".</p>
         ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 gap-3"> {/* More columns for smaller screens, reduced gap */}
           {products.map((product) => (
-            <Card key={product.id} className="overflow-hidden shadow-md hover:shadow-lg transition-shadow duration-200">
+            <Card key={product.id} className="overflow-hidden shadow-md hover:shadow-lg transition-shadow duration-200 flex flex-col">
               <CardHeader className="p-0">
-                <div className="relative h-40 w-full">
+                <div className="relative h-24 w-full"> {/* Reduced image height */}
                    <Image
-                    src={product.imageUrl || `https://picsum.photos/200/150?random=${product.id}`}
+                    src={product.imageUrl || `https://picsum.photos/150/100?random=${product.id}`} // Smaller placeholder
                     alt={product.name}
                     layout="fill"
                     objectFit="cover"
-                    data-ai-hint={product.dataAiHint || 'coffee'}
+                    data-ai-hint={product.dataAiHint || 'кофе'}
                     />
                 </div>
-
               </CardHeader>
-              <CardContent className="p-4">
-                 <CardTitle className="text-lg mb-1">{product.name}</CardTitle>
-                 <p className="text-muted-foreground font-semibold">{product.price.toFixed(2)} ₽</p>
+              <CardContent className="p-2 flex-grow"> {/* Reduced padding */}
+                 <CardTitle className="text-sm md:text-base mb-1 line-clamp-2">{product.name}</CardTitle> {/* Smaller title, allow 2 lines */}
+                 <p className="text-xs md:text-sm text-muted-foreground font-semibold">{product.price.toFixed(2)} ₽</p>
               </CardContent>
-              <CardFooter className="p-4 pt-0">
-                <Button onClick={() => addToOrder(product)} className="w-full" variant="outline">
-                  <PlusCircle className="mr-2 h-4 w-4" /> Добавить в заказ
+              <CardFooter className="p-2 pt-0 mt-auto"> {/* Reduced padding */}
+                <Button onClick={() => addToOrder(product)} className="w-full h-8 text-xs" variant="outline"> {/* Smaller button */}
+                  <PlusCircle className="mr-1 h-3 w-3" /> Добавить
                 </Button>
               </CardFooter>
             </Card>
@@ -176,12 +205,12 @@ export function OrderBuilder() {
                   <li key={item.id} className="flex justify-between items-center text-sm">
                     <div>
                       <span className="font-medium">{item.name}</span>
-                      <Badge variant="secondary" className="ml-2 px-1.5 py-0.5">{item.quantity}</Badge>
+                      <Badge variant="secondary" className="ml-2 px-1.5 py-0.5 text-xs">{item.quantity}</Badge> {/* Smaller badge */}
                     </div>
-                    <div className="flex items-center gap-2">
-                       <span className="font-mono">{(item.price * item.quantity).toFixed(2)} ₽</span>
-                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeFromOrder(item.id)}>
-                         <MinusCircle className="h-4 w-4 text-destructive" />
+                    <div className="flex items-center gap-1"> {/* Reduced gap */}
+                       <span className="font-mono text-xs">{(item.price * item.quantity).toFixed(2)} ₽</span> {/* Smaller price text */}
+                      <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => removeFromOrder(item.id)}> {/* Smaller button */}
+                         <MinusCircle className="h-3 w-3 text-destructive" /> {/* Smaller icon */}
                       </Button>
                     </div>
 
@@ -191,26 +220,26 @@ export function OrderBuilder() {
             )}
           </CardContent>
           <Separator />
-          <CardFooter className="flex flex-col gap-4 pt-4">
+          <CardFooter className="flex flex-col gap-3 pt-3"> {/* Reduced gap and padding */}
              {order.length > 0 && (
                 <>
-                 <div className="flex justify-between w-full font-semibold text-lg">
+                 <div className="flex justify-between w-full font-semibold text-base"> {/* Slightly smaller total */}
                     <span>Итого:</span>
                     <span>{totalPrice.toFixed(2)} ₽</span>
                  </div>
                  <div className="flex gap-2 w-full">
-                    <Button onClick={handleCheckout} className="flex-1 bg-accent hover:bg-accent/90">
+                    <Button onClick={handleCheckout} className="flex-1 h-9 text-sm bg-accent hover:bg-accent/90"> {/* Smaller button */}
                     Оформить заказ
                     </Button>
-                    <Button variant="outline" onClick={clearOrder} className="flex-1">
-                        <Trash2 className="mr-2 h-4 w-4" /> Очистить заказ
+                    <Button variant="outline" onClick={clearOrder} className="flex-1 h-9 text-sm"> {/* Smaller button */}
+                        <Trash2 className="mr-1 h-3 w-3" /> Очистить {/* Smaller icon */}
                     </Button>
                  </div>
 
                 </>
              )}
               {order.length === 0 && (
-                 <p className="text-muted-foreground text-center w-full">Добавьте товары, чтобы увидеть итоговую сумму.</p>
+                 <p className="text-muted-foreground text-center text-sm w-full">Добавьте товары, чтобы увидеть итоговую сумму.</p>
               )}
           </CardFooter>
         </Card>

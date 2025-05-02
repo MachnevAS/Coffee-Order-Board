@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label"; // Keep Label import if needed elsewhere, but FormLabel is used in the form
+// Keep Label import if needed elsewhere, but FormLabel is used in the form
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Form,
@@ -45,29 +45,38 @@ export function ProductManagement() {
     },
   });
 
+  const getDefaultProducts = (): Product[] => [
+      { id: '1', name: 'Эспрессо', price: 150, imageUrl: 'https://picsum.photos/200/150?random=1', dataAiHint: 'espresso coffee' },
+      { id: '2', name: 'Латте', price: 250, imageUrl: 'https://picsum.photos/200/150?random=2', dataAiHint: 'latte coffee art' },
+      { id: '3', name: 'Капучино', price: 200, imageUrl: 'https://picsum.photos/200/150?random=3', dataAiHint: 'cappuccino froth' },
+      { id: '4', name: 'Американо', price: 180, imageUrl: 'https://picsum.photos/200/150?random=4', dataAiHint: 'americano black coffee' },
+  ];
+
    useEffect(() => {
     setIsClient(true);
     // Load products from localStorage when the component mounts on the client
     const storedProducts = localStorage.getItem("coffeeProducts");
     if (storedProducts) {
       try {
-          setProducts(JSON.parse(storedProducts));
+          const parsedProducts = JSON.parse(storedProducts);
+          // Basic validation: check if it's an array
+          if (Array.isArray(parsedProducts)) {
+             setProducts(parsedProducts);
+          } else {
+             console.error("Invalid data format in localStorage for coffeeProducts");
+             setProducts(getDefaultProducts());
+             localStorage.setItem("coffeeProducts", JSON.stringify(getDefaultProducts()));
+          }
       } catch (e) {
           console.error("Failed to parse products from localStorage", e);
-          // Optionally clear invalid data
-          // localStorage.removeItem("coffeeProducts");
+          // Optionally clear invalid data or fallback to defaults
+          setProducts(getDefaultProducts());
+          localStorage.setItem("coffeeProducts", JSON.stringify(getDefaultProducts()));
       }
-
     } else {
         // Set default products if none exist in localStorage
-        const defaultProducts: Product[] = [
-         { id: '1', name: 'Эспрессо', price: 150, imageUrl: 'https://picsum.photos/200/150?random=1', dataAiHint: 'espresso coffee' },
-         { id: '2', name: 'Латте', price: 250, imageUrl: 'https://picsum.photos/200/150?random=2', dataAiHint: 'latte coffee art' },
-         { id: '3', name: 'Капучино', price: 200, imageUrl: 'https://picsum.photos/200/150?random=3', dataAiHint: 'cappuccino froth' },
-         { id: '4', name: 'Американо', price: 180, imageUrl: 'https://picsum.photos/200/150?random=4', dataAiHint: 'americano black coffee' },
-       ];
-       setProducts(defaultProducts);
-       localStorage.setItem("coffeeProducts", JSON.stringify(defaultProducts));
+       setProducts(getDefaultProducts());
+       localStorage.setItem("coffeeProducts", JSON.stringify(getDefaultProducts()));
     }
    }, []);
 
@@ -115,13 +124,35 @@ export function ProductManagement() {
     toast({
       title: "Товар удален",
       description: "Товар был удален.",
-      variant: "destructive",
+      variant: "destructive", // Changed variant for visual distinction
     });
   };
 
 
    if (!isClient) {
-    return <div>Загрузка управления товарами...</div>; // Or a skeleton loader
+    // Simple text loader for server-side rendering or before hydration
+    return (
+         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+             <Card className="shadow-lg">
+                 <CardHeader>
+                     <CardTitle className="flex items-center">
+                         <PlusCircle className="h-5 w-5 mr-2 text-primary" /> Добавить новый товар
+                     </CardTitle>
+                 </CardHeader>
+                 <CardContent>
+                    <p className="text-muted-foreground">Загрузка формы...</p>
+                 </CardContent>
+             </Card>
+             <Card className="shadow-lg">
+                 <CardHeader>
+                     <CardTitle>Существующие товары</CardTitle>
+                 </CardHeader>
+                 <CardContent>
+                     <p className="text-muted-foreground">Загрузка списка товаров...</p>
+                 </CardContent>
+             </Card>
+         </div>
+     );
    }
 
 
@@ -170,7 +201,7 @@ export function ProductManagement() {
                   <FormItem>
                     <FormLabel>URL изображения (необязательно)</FormLabel>
                     <FormControl>
-                      <Input placeholder="https://example.com/image.jpg" {...field} />
+                      <Input placeholder="https://example.com/image.jpg" {...field} value={field.value ?? ''} />
                     </FormControl>
                      <FormMessage />
                   </FormItem>
@@ -183,7 +214,7 @@ export function ProductManagement() {
                   <FormItem>
                     <FormLabel>Подсказка для поиска изображения (необязательно)</FormLabel>
                     <FormControl>
-                      <Input placeholder="например, кофе со льдом" {...field} />
+                      <Input placeholder="например, кофе со льдом" {...field} value={field.value ?? ''} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -207,7 +238,7 @@ export function ProductManagement() {
             <ul className="space-y-4">
               {products.map((product) => (
                 <li key={product.id} className="flex items-center justify-between p-3 border rounded-md bg-card hover:bg-secondary/30 transition-colors duration-150">
-                   <div className="flex items-center gap-3">
+                   <div className="flex items-center gap-3 overflow-hidden"> {/* Added overflow-hidden */}
                     <div className="relative h-12 w-12 rounded-md overflow-hidden flex-shrink-0">
                          <Image
                           src={product.imageUrl || `https://picsum.photos/100/100?random=${product.id}`}
@@ -219,13 +250,13 @@ export function ProductManagement() {
                         />
                     </div>
 
-                    <div>
-                        <p className="font-medium">{product.name}</p>
+                    <div className="overflow-hidden"> {/* Added overflow-hidden */}
+                        <p className="font-medium truncate">{product.name}</p> {/* Added truncate */}
                         <p className="text-sm text-muted-foreground">{product.price.toFixed(2)} ₽</p>
                     </div>
                    </div>
 
-                  <Button variant="destructive" size="sm" onClick={() => removeProduct(product.id)}>
+                  <Button variant="destructive" size="sm" onClick={() => removeProduct(product.id)} className="flex-shrink-0 ml-2"> {/* Added flex-shrink-0 and margin */}
                     Удалить
                   </Button>
                 </li>

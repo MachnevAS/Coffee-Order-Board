@@ -1,6 +1,7 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { OrderBuilder } from "@/components/order-builder";
 import { ProductManagement } from "@/components/product-management";
+import { SalesHistory } from "@/components/sales-history"; // Import the new component
 import { Coffee } from "lucide-react";
 
 export default function Home() {
@@ -13,15 +14,19 @@ export default function Home() {
         </h1>
       </header>
       <Tabs defaultValue="order">
-        <TabsList className="grid w-full grid-cols-2 max-w-md mx-auto mb-6">
+        <TabsList className="grid w-full grid-cols-3 max-w-lg mx-auto mb-6"> {/* Updated grid-cols */}
           <TabsTrigger value="order">Конструктор заказов</TabsTrigger>
           <TabsTrigger value="manage">Управление товарами</TabsTrigger>
+          <TabsTrigger value="history">История продаж</TabsTrigger> {/* Added history tab */}
         </TabsList>
         <TabsContent value="order">
           <OrderBuilder />
         </TabsContent>
         <TabsContent value="manage">
           <ProductManagement />
+        </TabsContent>
+         <TabsContent value="history"> {/* Added history content */}
+          <SalesHistory />
         </TabsContent>
       </Tabs>
     </main>
