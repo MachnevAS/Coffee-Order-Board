@@ -32,6 +32,7 @@ interface OrderItem extends Product {
 }
 
 export function OrderBuilder() {
+  // --- All Hooks called unconditionally at the top ---
   const [products, setProducts] = useState<Product[]>([]);
   const [order, setOrder] = useState<OrderItem[]>([]);
   const [totalPrice, setTotalPrice] = useState<number>(0);
@@ -44,6 +45,7 @@ export function OrderBuilder() {
   const orderCardTitleId = React.useId(); // Generate a unique ID for card title
 
 
+  // Effect to set isClient and load initial products
   useEffect(() => {
     setIsClient(true);
     console.log("OrderBuilder: useEffect running, isClient=true");
@@ -90,6 +92,7 @@ export function OrderBuilder() {
   }, [toast]); // Added toast dependency
 
 
+  // Effect to update total price
   useEffect(() => {
     if (isClient) {
       const newTotalPrice = order.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -97,7 +100,7 @@ export function OrderBuilder() {
     }
   }, [order, isClient]);
 
-   // Update products in state if they change in localStorage (e.g., from ProductManagement)
+   // Effect to handle storage changes for products
    useEffect(() => {
     if (!isClient) return;
 
@@ -146,7 +149,7 @@ export function OrderBuilder() {
     };
   }, [isClient]); // Rerun only if isClient changes
 
-  // Filter products based on search term
+  // Memoize filtered products based on search term
   const filteredProducts = useMemo(() => {
     if (!searchTerm) {
       return products;
@@ -157,7 +160,18 @@ export function OrderBuilder() {
     );
   }, [products, searchTerm]);
 
+  // Memoize order quantities for quick lookup in ProductCard
+  const orderQuantities = useMemo(() => {
+    const quantities: { [productId: string]: number } = {};
+    order.forEach(item => {
+      quantities[item.id] = item.quantity;
+    });
+    return quantities;
+  }, [order]);
 
+  // --- End of Hooks ---
+
+  // --- Functions ---
   const addToOrder = (product: Product) => {
     setOrder((prevOrder) => {
       const existingItem = prevOrder.find((item) => item.id === product.id);
@@ -169,10 +183,9 @@ export function OrderBuilder() {
         return [...prevOrder, { ...product, quantity: 1 }];
       }
     });
-    // REMOVED: Automatic sheet opening logic
   };
 
-    const removeFromOrder = (productId: string) => {
+  const removeFromOrder = (productId: string) => {
     setOrder((prevOrder) => {
       const existingItem = prevOrder.find((item) => item.id === productId);
       if (existingItem && existingItem.quantity > 1) {
@@ -257,142 +270,142 @@ export function OrderBuilder() {
     }
   };
 
-    // Component to render the order details (used in both Sheet and desktop Card)
-    const OrderDetails = ({ isSheet = false }: { isSheet?: boolean }) => (
-        <>
-          {/* Header with Title */}
-          <CardHeader className={cn(
-             "p-3 md:p-4 flex-shrink-0",
-             isSheet ? "pb-2 border-b" : "pb-3" // Add border bottom only for sheet header
-           )}
-           // Provide accessible name based on context
-           aria-labelledby={isSheet ? orderSheetTitleId : orderCardTitleId}
-          >
-              <div className={cn(
-                 "flex items-center justify-between",
-                 isSheet ? "text-lg" : "text-xl" // Adjust title size for sheet
-              )}>
-                  {/* Render title appropriately */}
-                  {/* The visible title is used for accessibility */}
-                  <CardTitle id={isSheet ? orderSheetTitleId : orderCardTitleId} className={isSheet ? "text-lg" : "text-xl"}>
-                      Текущий заказ
-                  </CardTitle>
-                  {/* Close button only for sheet */}
-                  {isSheet && <SheetClose className="relative -top-1 -right-1" />}
-              </div>
-          </CardHeader>
-
-          {/* CardContent now correctly enables ScrollArea to work within flex layout */}
-           <CardContent className={cn(
-              "p-0 flex-grow overflow-hidden min-h-0", // Ensure CardContent can shrink and grow
-              isSheet ? "px-3 md:px-4" : "px-4 pt-0" // Use px for side padding, pt-0 for desktop, overflow-hidden
+  // --- Sub-component for Order Details ---
+  const OrderDetails = ({ isSheet = false }: { isSheet?: boolean }) => (
+    <>
+      {/* Header with Title */}
+      <CardHeader className={cn(
+         "p-3 md:p-4 flex-shrink-0",
+         isSheet ? "pb-2 border-b" : "pb-3" // Add border bottom only for sheet header
+       )}
+       // Provide accessible name based on context
+       aria-labelledby={isSheet ? orderSheetTitleId : orderCardTitleId}
+      >
+          <div className={cn(
+             "flex items-center justify-between",
+             isSheet ? "text-lg" : "text-xl" // Adjust title size for sheet
           )}>
-              <ScrollArea className={cn(
-                 "h-full pr-2" // Let ScrollArea take full height of its container (CardContent), add padding-right for scrollbar
-              )}>
-                 {order.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-3 md:py-4 text-sm">Ваш заказ пуст.</p>
-                 ) : (
-                   <ul className="space-y-1 md:space-y-1.5 pt-1 pb-2 md:pb-3"> {/* Reduced space-y, Add padding top/bottom inside scroll area */}
-                    {order.map((item, index) => (
-                       <li
-                         key={item.id}
-                         className={cn(
-                            "flex justify-between items-center text-sm gap-2 py-1 px-1 rounded-sm", // Added px and rounded
-                             // Add alternating background based on index
-                             (index % 2 !== 0 ? 'bg-muted/50' : 'bg-card')
-                         )}
-                       >
-                         <div className="flex-grow overflow-hidden mr-1"> {/* Allow name to take space, add margin */}
-                           <span className="font-medium block truncate">{item.name} {item.volume && <span className="text-xs text-muted-foreground">({item.volume})</span>}</span>
-                            <span className="font-mono text-xs md:text-sm whitespace-nowrap">{(item.price * item.quantity).toFixed(0)} ₽</span>
-                         </div>
-                         <div className="flex items-center gap-1 md:gap-1 flex-shrink-0"> {/* Reduced desktop gap */}
-                            <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7" onClick={() => removeFromOrder(item.id)}>
-                              <MinusCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
-                              <span className="sr-only">Убрать 1 {item.name}</span>
-                           </Button>
-                            <Badge variant="secondary" className="px-1.5 py-0.5 text-xs md:text-sm font-medium min-w-[24px] justify-center"> {/* Quantity display */}
-                               {item.quantity}
-                            </Badge>
-                            <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7" onClick={() => addToOrder(item)}>
-                               <PlusCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
-                               <span className="sr-only">Добавить 1 {item.name}</span>
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7 text-destructive/80 hover:text-destructive hover:bg-destructive/10 ml-1" onClick={() => removeEntireItem(item.id)}>
-                                <Trash2 className="h-3.5 w-3.5" />
-                                <span className="sr-only">Удалить {item.name} из заказа</span>
-                            </Button>
-                         </div>
-                       </li>
-                    ))}
-                  </ul>
-                 )}
-              </ScrollArea>
-          </CardContent>
+              {/* Render title appropriately */}
+              {/* The visible title is used for accessibility */}
+              <CardTitle id={isSheet ? orderSheetTitleId : orderCardTitleId} className={isSheet ? "text-lg" : "text-xl"}>
+                  Текущий заказ
+              </CardTitle>
+              {/* Close button only for sheet */}
+              {isSheet && <SheetClose className="relative -top-1 -right-1" />}
+          </div>
+      </CardHeader>
 
-          {/* CardFooter remains at the bottom */}
-           <CardFooter className={cn(
-               "flex flex-col gap-2 md:gap-3 p-3 md:p-4 pt-0 flex-shrink-0",
-               isSheet ? "border-t pt-3" : "pt-2"
-               )}> {/* Keep flex-shrink-0 */}
-               {/* Separator only for Desktop */}
-               {!isSheet && order.length > 0 && <Separator className="mb-3" />}
-
-              {order.length > 0 ? (
-                 <>
-                  <div className="flex justify-between w-full font-semibold text-sm md:text-base">
-                     <span>Итого:</span>
-                     <span>{totalPrice.toFixed(0)} ₽</span>
-                  </div>
-
-                  {/* Payment Method Selection */}
-                  <div className="w-full pt-1">
-                     <p className="text-xs text-muted-foreground mb-1.5">Способ оплаты:</p>
-                     <div className="grid grid-cols-3 gap-1.5 md:gap-2">
-                         {(['Наличные', 'Карта', 'Перевод'] as PaymentMethod[]).map((method) => (
-                            <Button
-                             key={method}
-                             variant={selectedPaymentMethod === method ? "default" : "outline"}
-                             onClick={() => setSelectedPaymentMethod(method)}
-                             className={cn(
-                                 "h-auto min-h-[48px] text-xs flex-col items-center justify-center px-1 py-1 leading-tight", // Adjusted py
-                                 selectedPaymentMethod === method ? 'bg-accent hover:bg-accent/90 text-accent-foreground' : ''
-                             )}
-                             size="sm"
-                            >
-                              {method === 'Наличные' && <Banknote className="h-3.5 w-3.5 md:h-4 md:w-4 mb-0.5" />} {/* Reduced mb */}
-                              {method === 'Карта' && <CreditCard className="h-3.5 w-3.5 md:h-4 md:w-4 mb-0.5" />} {/* Reduced mb */}
-                              {method === 'Перевод' && <Smartphone className="h-3.5 w-3.5 md:h-4 md:w-4 mb-0.5" />} {/* Reduced mb */}
-                              <span className="text-center block">{method}</span>
-                            </Button>
-                         ))}
+      {/* CardContent now correctly enables ScrollArea to work within flex layout */}
+       <CardContent className={cn(
+          "p-0 flex-grow overflow-hidden min-h-0", // Ensure CardContent can shrink and grow
+          isSheet ? "px-3 md:px-4" : "px-4 pt-0" // Use px for side padding, pt-0 for desktop, overflow-hidden
+      )}>
+          <ScrollArea className={cn(
+             "h-full pr-2" // Let ScrollArea take full height of its container (CardContent), add padding-right for scrollbar
+          )}>
+             {order.length === 0 ? (
+              <p className="text-muted-foreground text-center py-3 md:py-4 text-sm">Ваш заказ пуст.</p>
+             ) : (
+               <ul className="space-y-1 md:space-y-1.5 pt-1 pb-2 md:pb-3"> {/* Reduced space-y, Add padding top/bottom inside scroll area */}
+                {order.map((item, index) => (
+                   <li
+                     key={item.id}
+                     className={cn(
+                        "flex justify-between items-center text-sm gap-2 py-1 px-1 rounded-sm", // Added px and rounded
+                         // Add alternating background based on index
+                         (index % 2 !== 0 ? 'bg-muted/50' : 'bg-card')
+                     )}
+                   >
+                     <div className="flex-grow overflow-hidden mr-1"> {/* Allow name to take space, add margin */}
+                       <span className="font-medium block truncate">{item.name} {item.volume && <span className="text-xs text-muted-foreground">({item.volume})</span>}</span>
+                        <span className="font-mono text-xs md:text-sm whitespace-nowrap">{(item.price * item.quantity).toFixed(0)} ₽</span>
                      </div>
-                  </div>
+                     <div className="flex items-center gap-1 md:gap-1 flex-shrink-0"> {/* Reduced desktop gap */}
+                        <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7" onClick={() => removeFromOrder(item.id)}>
+                          <MinusCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                          <span className="sr-only">Убрать 1 {item.name}</span>
+                       </Button>
+                        <Badge variant="secondary" className="px-1.5 py-0.5 text-xs md:text-sm font-medium min-w-[24px] justify-center"> {/* Quantity display */}
+                           {item.quantity}
+                        </Badge>
+                        <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7" onClick={() => addToOrder(item)}>
+                           <PlusCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
+                           <span className="sr-only">Добавить 1 {item.name}</span>
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7 text-destructive/80 hover:text-destructive hover:bg-destructive/10 ml-1" onClick={() => removeEntireItem(item.id)}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                            <span className="sr-only">Удалить {item.name} из заказа</span>
+                        </Button>
+                     </div>
+                   </li>
+                ))}
+              </ul>
+             )}
+          </ScrollArea>
+      </CardContent>
+
+      {/* CardFooter remains at the bottom */}
+       <CardFooter className={cn(
+           "flex flex-col gap-2 md:gap-3 p-3 md:p-4 pt-0 flex-shrink-0",
+           isSheet ? "border-t pt-3" : "pt-2"
+           )}> {/* Keep flex-shrink-0 */}
+           {/* Separator only for Desktop */}
+           {!isSheet && order.length > 0 && <Separator className="mb-3" />}
+
+          {order.length > 0 ? (
+             <>
+              <div className="flex justify-between w-full font-semibold text-sm md:text-base">
+                 <span>Итого:</span>
+                 <span>{totalPrice.toFixed(0)} ₽</span>
+              </div>
+
+              {/* Payment Method Selection */}
+              <div className="w-full pt-1">
+                 <p className="text-xs text-muted-foreground mb-1.5">Способ оплаты:</p>
+                 <div className="grid grid-cols-3 gap-1.5 md:gap-2">
+                     {(['Наличные', 'Карта', 'Перевод'] as PaymentMethod[]).map((method) => (
+                        <Button
+                         key={method}
+                         variant={selectedPaymentMethod === method ? "default" : "outline"}
+                         onClick={() => setSelectedPaymentMethod(method)}
+                         className={cn(
+                             "h-auto min-h-[48px] text-xs flex-col items-center justify-center px-1 py-1 leading-tight", // Adjusted py
+                             selectedPaymentMethod === method ? 'bg-accent hover:bg-accent/90 text-accent-foreground' : ''
+                         )}
+                         size="sm"
+                        >
+                          {method === 'Наличные' && <Banknote className="h-3.5 w-3.5 md:h-4 md:w-4 mb-0.5" />} {/* Reduced mb */}
+                          {method === 'Карта' && <CreditCard className="h-3.5 w-3.5 md:h-4 md:w-4 mb-0.5" />} {/* Reduced mb */}
+                          {method === 'Перевод' && <Smartphone className="h-3.5 w-3.5 md:h-4 md:w-4 mb-0.5" />} {/* Reduced mb */}
+                          <span className="text-center block">{method}</span>
+                        </Button>
+                     ))}
+                 </div>
+              </div>
 
 
-                  <div className="flex gap-2 w-full pt-2">
-                     <Button
-                         onClick={handleCheckout}
-                         className="flex-1 h-8 md:h-9 text-xs md:text-sm bg-primary hover:bg-primary/90 px-2"
-                         disabled={!selectedPaymentMethod}
-                     >
-                     Оформить заказ
-                     </Button>
-                     <Button variant="outline" onClick={clearOrder} className="h-8 md:h-9 text-xs md:text-sm px-2">
-                         <Trash2 className="mr-1 h-3 w-3" /> Очистить
-                     </Button>
-                  </div>
+              <div className="flex gap-2 w-full pt-2">
+                 <Button
+                     onClick={handleCheckout}
+                     className="flex-1 h-8 md:h-9 text-xs md:text-sm bg-primary hover:bg-primary/90 px-2"
+                     disabled={!selectedPaymentMethod}
+                 >
+                 Оформить заказ
+                 </Button>
+                 <Button variant="outline" onClick={clearOrder} className="h-8 md:h-9 text-xs md:text-sm px-2">
+                     <Trash2 className="mr-1 h-3 w-3" /> Очистить
+                 </Button>
+              </div>
 
-                 </>
-              ) : (
-                <p className="text-muted-foreground text-center text-xs md:text-sm w-full">Добавьте товары, чтобы увидеть итоговую сумму.</p>
-              )}
-           </CardFooter>
-        </>
-    );
+             </>
+          ) : (
+            <p className="text-muted-foreground text-center text-xs md:text-sm w-full">Добавьте товары, чтобы увидеть итоговую сумму.</p>
+          )}
+       </CardFooter>
+    </>
+  );
 
-
+  // --- Conditional Return for SSR Loading State ---
   if (!isClient) {
     return (
          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -425,15 +438,7 @@ export function OrderBuilder() {
     );
   }
 
-   // Memoize order quantities for quick lookup
-   const orderQuantities = useMemo(() => {
-     const quantities: { [productId: string]: number } = {};
-     order.forEach(item => {
-       quantities[item.id] = item.quantity;
-     });
-     return quantities;
-   }, [order]);
-
+  // --- Main Render Logic (Client-Side) ---
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8 pb-16 lg:pb-0"> {/* Increased pb for floating button */}
       {/* Product List */}
@@ -464,7 +469,7 @@ export function OrderBuilder() {
                  product={product}
                  onAddToOrder={addToOrder}
                  onRemoveFromOrder={removeFromOrder} // Pass the remove function
-                 orderQuantity={orderQuantities[product.id]} // Pass the quantity
+                 orderQuantity={orderQuantities[product.id]} // Pass the quantity from memoized map
              />
           ))}
         </div>
@@ -524,4 +529,3 @@ export function OrderBuilder() {
     </div>
   );
 }
-
