@@ -471,7 +471,7 @@ export function SalesHistory() {
 
         <ScrollArea className="h-[400px] md:h-[500px] w-full border rounded-md"> {/* Adjusted height */}
           <Table>
-            <TableHeader className="sticky top-0 bg-background shadow-sm z-10">
+            <TableHeader className="sticky top-0 bg-background shadow-sm z-10"> {/* Added sticky, top-0, bg-background, shadow-sm, z-10 */}
               <TableRow>
                  <TableHead className="w-[100px] md:w-[150px] hidden sm:table-cell text-xs md:text-sm px-2 md:px-4 cursor-pointer hover:bg-muted/50 whitespace-nowrap" onClick={() => requestSort('timestamp')}> {/* Added whitespace-nowrap */}
                     <div className="flex items-center">
