@@ -379,7 +379,7 @@ export function ProductManagement() {
                     <FormField control={form.control} name="imageUrl" render={({ field }) => ( <FormItem><FormLabel>URL изображения (необязательно)</FormLabel><FormControl><Input placeholder="https://..." {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem> )} />
                     <FormField control={form.control} name="dataAiHint" render={({ field }) => ( <FormItem><FormLabel>Подсказка изображения (необязательно)</FormLabel><FormControl><Input placeholder="например, латте арт" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem> )} />
                 </div>
-                 <Button type="submit" className="w-full mt-auto bg-accent hover:bg-accent/90 text-sm px-3">Добавить товар</Button> {/* Moved button outside the flex-grow div */}
+                 <Button type="submit" className="w-full mt-4 bg-accent hover:bg-accent/90 text-sm px-3">Добавить товар</Button> {/* Added mt-4 */}
             </form>
           </Form>
         </CardContent>
@@ -489,3 +489,6 @@ export function ProductManagement() {
   );
 }
 
+
+
+    
