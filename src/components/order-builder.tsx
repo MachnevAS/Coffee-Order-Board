@@ -70,9 +70,17 @@ export function OrderBuilder() {
           const updatedProducts = JSON.parse(event.newValue);
           if (Array.isArray(updatedProducts)) {
             setProducts(updatedProducts);
+            // Also update items in the current order if their info changed
+            setOrder(prevOrder => {
+                return prevOrder.map(orderItem => {
+                    const updatedProduct = updatedProducts.find(p => p.id === orderItem.id);
+                    // Keep quantity, update the rest
+                    return updatedProduct ? { ...updatedProduct, quantity: orderItem.quantity } : orderItem;
+                }).filter(item => updatedProducts.some(p => p.id === item.id)); // Remove items no longer in product list
+            });
           }
         } catch (e) {
-          console.error("Error updating products from localStorage change:", e);
+          console.error("Error updating products/order from localStorage change:", e);
         }
       }
     };

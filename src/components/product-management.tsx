@@ -5,7 +5,7 @@ import React, { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button"; // Import buttonVariants
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -134,8 +134,8 @@ export function ProductManagement() {
       name: data.name,
       volume: data.volume || undefined, // Store as undefined if empty
       price: data.price,
-      imageUrl: data.imageUrl || `https://picsum.photos/100/80?random=${Date.now()}`, // Default placeholder
-      dataAiHint: data.dataAiHint || [data.name.toLowerCase(), data.volume?.replace(' л', '')].filter(Boolean).slice(0, 2).join(' '), // Generate hint
+      imageUrl: data.imageUrl || undefined, // Don't assign default here, do it in render
+      dataAiHint: data.dataAiHint || [data.name.toLowerCase(), data.volume?.replace(/[^0-9.,]/g, '')].filter(Boolean).slice(0, 2).join(' '), // Generate hint using name and numeric part of volume
     };
 
     setProducts((prevProducts) => [...prevProducts, newProduct]);
@@ -188,8 +188,8 @@ export function ProductManagement() {
               name: data.name,
               volume: data.volume || undefined,
               price: data.price,
-              imageUrl: data.imageUrl || p.imageUrl, // Keep old image if new one is empty
-              dataAiHint: data.dataAiHint || p.dataAiHint || [data.name.toLowerCase(), data.volume?.replace(' л', '')].filter(Boolean).slice(0, 2).join(' '), // Update hint
+              imageUrl: data.imageUrl || undefined, // Update or keep old image, store undefined if empty
+              dataAiHint: data.dataAiHint || p.dataAiHint || [data.name.toLowerCase(), data.volume?.replace(/[^0-9.,]/g, '')].filter(Boolean).slice(0, 2).join(' '), // Update hint
             }
           : p
       )
@@ -276,7 +276,7 @@ export function ProductManagement() {
                     <FormLabel>Цена (₽)</FormLabel>
                     <FormControl>
                       {/* Use type="text" and inputMode="numeric" for better mobile experience */}
-                      <Input type="text" inputMode="numeric" pattern="[0-9]*" placeholder="например, 165" {...field} />
+                      <Input type="text" inputMode="numeric" pattern="[0-9]*([\.,][0-9]+)?" placeholder="например, 165" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -332,7 +332,7 @@ export function ProductManagement() {
                         <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-3">
                            <FormField control={editForm.control} name="name" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Название</FormLabel><FormControl><Input {...field} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
                            <FormField control={editForm.control} name="volume" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Объём</FormLabel><FormControl><Input {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
-                           <FormField control={editForm.control} name="price" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Цена (₽)</FormLabel><FormControl><Input type="text" inputMode="numeric" pattern="[0-9]*" {...field} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
+                           <FormField control={editForm.control} name="price" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Цена (₽)</FormLabel><FormControl><Input type="text" inputMode="numeric" pattern="[0-9]*([\.,][0-9]+)?" {...field} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
                            <FormField control={editForm.control} name="imageUrl" render={({ field }) => ( <FormItem><FormLabel className="text-xs">URL изображения</FormLabel><FormControl><Input {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
                            <FormField control={editForm.control} name="dataAiHint" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Подсказка ИИ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
                            <div className="flex justify-end gap-2 pt-2">
@@ -390,6 +390,7 @@ export function ProductManagement() {
                                     </AlertDialogHeader>
                                     <AlertDialogFooter>
                                     <AlertDialogCancel>Отмена</AlertDialogCancel>
+                                    {/* Use buttonVariants for destructive action style */}
                                     <AlertDialogAction onClick={() => removeProduct(product.id)} className={buttonVariants({ variant: "destructive" })}>
                                         Удалить
                                     </AlertDialogAction>
