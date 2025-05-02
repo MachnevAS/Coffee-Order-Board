@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import type { Product } from "@/types/product";
-import { PlusCircle, Edit, Trash2, Save, X, FilePlus2, Search, Trash } from "lucide-react"; // Removed Coffee icon
+import { PlusCircle, Edit, Trash2, Save, X, FilePlus2, Search, Trash } from "lucide-react"; // Added X icon
 import { getRawProductData } from "@/lib/product-defaults"; // Import defaults and raw data getter
 import {
   AlertDialog,
@@ -443,8 +443,19 @@ export function ProductManagement() {
                 placeholder="Поиск товаров..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-8 h-9" // Adjusted height and padding
+                className="pl-8 pr-8 h-9" // Adjusted height and padding (added pr-8 for clear button)
               />
+               {searchTerm && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-7 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground hover:text-foreground" // Adjusted right padding
+                    onClick={() => setSearchTerm("")}
+                  >
+                    <X className="h-4 w-4" />
+                    <span className="sr-only">Очистить поиск</span>
+                  </Button>
+               )}
             </div>
 
           <ScrollArea className="h-[440px] md:h-[540px] p-6 pt-0"> {/* Adjust height and add padding */}
@@ -474,4 +485,3 @@ export function ProductManagement() {
     </div>
   );
 }
-

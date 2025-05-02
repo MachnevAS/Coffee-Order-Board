@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import type { Product } from "@/types/product";
 import type { PaymentMethod, Order } from "@/types/order"; // Import Order and PaymentMethod types
-import { MinusCircle, PlusCircle, Trash2, CreditCard, Banknote, Smartphone, Search, ShoppingCart } from "lucide-react"; // Removed Coffee icon
+import { MinusCircle, PlusCircle, Trash2, CreditCard, Banknote, Smartphone, Search, ShoppingCart, X } from "lucide-react"; // Added X icon
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input"; // Added Input
@@ -291,7 +291,7 @@ export function OrderBuilder() {
                   Текущий заказ
               </CardTitle>
               {/* Close button only for sheet */}
-              {isSheet && <SheetClose className="relative -top-1 -right-1" />}
+              {isSheet && <SheetClose asChild><Button variant="ghost" size="icon" className="relative -top-1 -right-1 h-7 w-7"><X className="h-4 w-4"/></Button></SheetClose>}
           </div>
       </CardHeader>
 
@@ -452,8 +452,19 @@ export function OrderBuilder() {
              placeholder="Поиск товаров..."
              value={searchTerm}
              onChange={(e) => setSearchTerm(e.target.value)}
-             className="pl-8 h-9" // Adjusted height and padding
+             className="pl-8 pr-8 h-9" // Adjusted height and padding (added pr-8 for clear button)
            />
+           {searchTerm && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                onClick={() => setSearchTerm("")}
+              >
+                <X className="h-4 w-4" />
+                 <span className="sr-only">Очистить поиск</span>
+              </Button>
+           )}
          </div>
 
 
