@@ -17,7 +17,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { Calendar as CalendarIcon, Download } from 'lucide-react';
+import { Calendar as CalendarIcon, Download, Trash2 } from 'lucide-react'; // Added Trash2
 import { format, parseISO, startOfDay, endOfDay, isValid } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import * as XLSX from 'xlsx';
@@ -25,6 +25,18 @@ import type { DateRange } from 'react-day-picker';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"; // Added AlertDialog
+import { useToast } from "@/hooks/use-toast"; // Added useToast
 
 interface OrderItem {
   name: string;
@@ -44,25 +56,74 @@ export function SalesHistory() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [isClient, setIsClient] = useState(false);
+  const { toast } = useToast(); // Initialize toast
 
   useEffect(() => {
     setIsClient(true);
-    const storedOrders = localStorage.getItem('coffeeOrders');
-    if (storedOrders) {
-      try {
-        const parsedOrders: Order[] = JSON.parse(storedOrders);
-        // Ensure orders are sorted by timestamp descending initially
-        setOrders(
-          parsedOrders.sort(
-            (a, b) => parseISO(b.timestamp).getTime() - parseISO(a.timestamp).getTime()
-          )
-        );
-      } catch (e) {
-        console.error('Failed to parse orders from localStorage', e);
-        setOrders([]);
-      }
+    try {
+        const storedOrders = localStorage.getItem('coffeeOrders');
+        if (storedOrders) {
+            try {
+                const parsedOrders: Order[] = JSON.parse(storedOrders);
+                // Ensure orders are sorted by timestamp descending initially
+                 if (Array.isArray(parsedOrders)) {
+                    setOrders(
+                        parsedOrders.sort(
+                            (a, b) => parseISO(b.timestamp).getTime() - parseISO(a.timestamp).getTime()
+                        )
+                    );
+                 } else {
+                     console.error('Parsed orders is not an array:', parsedOrders);
+                     setOrders([]);
+                     localStorage.removeItem('coffeeOrders'); // Clear invalid data
+                 }
+
+            } catch (e) {
+                console.error('Failed to parse orders from localStorage', e);
+                setOrders([]);
+                 localStorage.removeItem('coffeeOrders'); // Clear invalid data
+            }
+        } else {
+            setOrders([]); // Set to empty array if no orders found
+        }
+    } catch (lsError) {
+         console.error("Error accessing localStorage for orders:", lsError);
+         setOrders([]); // Initialize as empty on localStorage access error
+         toast({
+            title: "Ошибка LocalStorage",
+            description: "Не удалось загрузить историю заказов.",
+            variant: "destructive",
+         });
     }
-  }, []);
+  }, [toast]); // Added toast dependency
+
+
+   // Persist orders to localStorage whenever they change (including deletions)
+   useEffect(() => {
+       if (isClient) {
+           console.log("SalesHistory: Persisting orders to localStorage", orders.length);
+           try {
+               const currentStoredValue = localStorage.getItem("coffeeOrders");
+               const newOrdersJson = JSON.stringify(orders);
+
+               if (currentStoredValue !== newOrdersJson) {
+                   localStorage.setItem("coffeeOrders", newOrdersJson);
+                   console.log("SalesHistory: Orders saved to localStorage.");
+                   // Note: We might not need to dispatch a storage event here unless
+                   // another component specifically needs to react *instantly* to
+                   // order history changes made within this component.
+               }
+           } catch (e) {
+               console.error("SalesHistory: Failed to save orders to localStorage", e);
+               toast({
+                   title: "Ошибка сохранения",
+                   description: "Не удалось обновить историю заказов.",
+                   variant: "destructive",
+               });
+           }
+       }
+   }, [orders, isClient, toast]); // Add toast dependency
+
 
   const filteredOrders = useMemo(() => {
     if (!dateRange?.from) {
@@ -116,6 +177,19 @@ export function SalesHistory() {
 
     XLSX.writeFile(workbook, filename);
   };
+
+   const handleDeleteOrder = (orderId: string) => {
+      if (!isClient) return;
+
+      setOrders(prevOrders => prevOrders.filter(order => order.id !== orderId));
+
+      toast({
+          title: "Заказ удален",
+          description: `Заказ ${orderId} был успешно удален из истории.`,
+          variant: "destructive" // Use destructive variant for deletion confirmation
+      });
+   };
+
 
   const formatCurrency = (amount: number) => {
     return `${amount.toFixed(0)} ₽`; // Format without decimals
@@ -190,12 +264,13 @@ export function SalesHistory() {
                 <TableHead className="w-[100px] md:w-[150px] hidden sm:table-cell text-xs md:text-sm px-2 md:px-4">Дата</TableHead>
                 <TableHead className="text-xs md:text-sm px-2 md:px-4">Товары</TableHead>
                 <TableHead className="text-right w-[80px] md:w-[100px] text-xs md:text-sm px-2 md:px-4">Итого</TableHead>
+                <TableHead className="text-right w-[40px] md:w-[60px] px-2 md:px-4"></TableHead> {/* Header for delete button */}
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredOrders.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={3} className="text-center text-muted-foreground py-6 md:py-8 text-sm">
+                  <TableCell colSpan={4} className="text-center text-muted-foreground py-6 md:py-8 text-sm"> {/* Increased colspan */}
                     Нет заказов за выбранный период.
                   </TableCell>
                 </TableRow>
@@ -223,6 +298,30 @@ export function SalesHistory() {
                     </TableCell>
                     <TableCell className="text-right font-mono text-xs md:text-sm px-2 md:px-4 py-2 md:py-3 align-top"> {/* Adjusted padding */}
                       {formatCurrency(order.totalPrice)}
+                    </TableCell>
+                    <TableCell className="text-right px-2 md:px-4 py-2 md:py-3 align-top"> {/* Cell for delete button */}
+                       <AlertDialog>
+                           <AlertDialogTrigger asChild>
+                               <Button variant="ghost" size="icon" className="h-7 w-7 md:h-8 md:w-8 text-destructive hover:text-destructive hover:bg-destructive/10">
+                                   <Trash2 className="h-3.5 w-3.5 md:h-4 md:w-4" />
+                                   <span className="sr-only">Удалить заказ {order.id}</span>
+                               </Button>
+                           </AlertDialogTrigger>
+                           <AlertDialogContent>
+                               <AlertDialogHeader>
+                                   <AlertDialogTitle>Вы уверены?</AlertDialogTitle>
+                                   <AlertDialogDescription>
+                                       Это действие необратимо. Заказ от {format(parseISO(order.timestamp), 'dd.MM.yyyy HH:mm', { locale: ru })} на сумму {formatCurrency(order.totalPrice)} будет удален навсегда.
+                                   </AlertDialogDescription>
+                               </AlertDialogHeader>
+                               <AlertDialogFooter>
+                                   <AlertDialogCancel>Отмена</AlertDialogCancel>
+                                   <AlertDialogAction onClick={() => handleDeleteOrder(order.id)} className={buttonVariants({ variant: "destructive" })}>
+                                       Удалить
+                                   </AlertDialogAction>
+                               </AlertDialogFooter>
+                           </AlertDialogContent>
+                       </AlertDialog>
                     </TableCell>
                   </TableRow>
                 ))
