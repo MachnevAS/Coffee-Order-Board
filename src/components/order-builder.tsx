@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
@@ -445,11 +446,13 @@ export function OrderBuilder() {
                     />
                 </div>
               </CardHeader>
-              <CardContent className="p-1.5 md:p-2 flex-grow">
-                 <CardTitle className="text-xs md:text-sm font-medium mb-0.5 line-clamp-2 leading-tight">
-                     {product.name} {product.volume && <span className="text-muted-foreground font-normal">({product.volume})</span>}
-                 </CardTitle>
-                 <p className="text-xs md:text-sm text-foreground font-semibold">{product.price.toFixed(0)} ₽</p>
+              <CardContent className="p-1.5 md:p-2 flex-grow flex items-start justify-between gap-1"> {/* Adjusted padding & flex */}
+                 <div className="flex-grow"> {/* Wrapper for name and volume */}
+                     <CardTitle className="text-xs md:text-sm font-medium mb-0 line-clamp-2 leading-tight"> {/* Removed mb-0.5 */}
+                         {product.name} {product.volume && <span className="text-muted-foreground font-normal">({product.volume})</span>}
+                     </CardTitle>
+                 </div>
+                 <p className="text-sm md:text-base text-foreground font-semibold whitespace-nowrap flex-shrink-0">{product.price.toFixed(0)} ₽</p> {/* Larger price, nowrap, shrink-0 */}
               </CardContent>
               <CardFooter className="p-1.5 md:p-2 pt-0 mt-auto">
                 <Button onClick={() => addToOrder(product)} className="w-full h-7 md:h-8 text-xs px-2" variant="outline"> {/* Adjusted px */}
@@ -487,11 +490,11 @@ export function OrderBuilder() {
               <SheetContent
                  side="bottom"
                  className="rounded-t-lg h-[75vh] flex flex-col p-0"
-                 aria-describedby={undefined} // Removed default aria-describedby
+                 aria-describedby={"order-sheet-title"} // Use static ID or generate one
               >
-                  {/* Add a visually hidden title for accessibility */}
+                  {/* Use SheetHeader and SheetTitle for accessibility */}
                   <SheetHeader className="sr-only">
-                    <SheetTitle>Текущий заказ</SheetTitle>
+                    <SheetTitle id="order-sheet-title">Текущий заказ</SheetTitle>
                   </SheetHeader>
                   {/* Now the visible title is part of OrderDetails */}
                   <OrderDetails isSheet={true} />
