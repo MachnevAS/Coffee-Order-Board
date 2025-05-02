@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
@@ -8,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import type { Product } from "@/types/product";
 import type { PaymentMethod, Order } from "@/types/order"; // Import Order and PaymentMethod types
-import { MinusCircle, PlusCircle, ShoppingCart, Trash2, CreditCard, Banknote, Smartphone, Search, SheetIcon } from "lucide-react"; // Added Search, SheetIcon
+import { MinusCircle, PlusCircle, Trash2, CreditCard, Banknote, Smartphone, Search, ShoppingCart, SheetIcon } from "lucide-react"; // Re-added ShoppingCart for mobile badge
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input"; // Added Input
@@ -257,52 +258,58 @@ export function OrderBuilder() {
     // Component to render the order details (used in both Sheet and desktop Card)
     const OrderDetails = ({ isSheet = false }: { isSheet?: boolean }) => (
         <>
-          <CardHeader className={cn("p-3 md:p-4", isSheet ? "pb-2" : "pb-2 md:pb-3")}>
-            <CardTitle className={cn("text-base md:text-lg flex items-center justify-between", isSheet ? "text-lg" : "")}>
+          <CardHeader className={cn("p-3 md:p-4", isSheet ? "pb-2" : "pb-3")}> {/* Adjusted desktop padding */}
+            <CardTitle className={cn("text-base md:text-lg flex items-center justify-between", isSheet ? "text-lg" : "text-xl")}> {/* Adjusted desktop size */}
               <span>Текущий заказ</span>
-              <ShoppingCart className="h-4 w-4 md:h-5 md:w-5 text-primary" />
-            </CardTitle>
+              {/* Shopping cart icon removed from here */}
+             </CardTitle>
              {isSheet && <SheetClose className="absolute right-3 top-3" />}
           </CardHeader>
 
-          <ScrollArea className={cn("px-3 md:px-4", isSheet ? "h-[calc(80vh-250px)]" : "max-h-[105px] lg:max-h-[300px] md:max-h-[400px] lg:block lg:p-3 lg:md:p-4 lg:pt-0")}> {/* Adjust scroll area height for sheet */}
-             {order.length === 0 ? (
-              <p className="text-muted-foreground text-center py-3 md:py-4 text-sm">Ваш заказ пуст.</p>
-             ) : (
-               <ul className="space-y-2 md:space-y-3">
-                {order.map((item) => (
-                   <li key={item.id} className="flex justify-between items-center text-sm gap-2">
-                     <div className="flex-grow overflow-hidden"> {/* Allow name to take space */}
-                       <span className="font-medium block truncate">{item.name} {item.volume && <span className="text-xs text-muted-foreground">({item.volume})</span>}</span>
-                        <span className="font-mono text-xs md:text-sm whitespace-nowrap">{(item.price * item.quantity).toFixed(0)} ₽</span>
-                     </div>
-                     <div className="flex items-center gap-1 md:gap-1.5 flex-shrink-0"> {/* Prevent controls from shrinking */}
-                        <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7" onClick={() => removeFromOrder(item.id)}>
-                          <MinusCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
-                          <span className="sr-only">Убрать 1 {item.name}</span>
-                       </Button>
-                        <Badge variant="secondary" className="px-1.5 py-0 text-xs md:text-sm font-medium min-w-[24px] justify-center"> {/* Quantity display */}
-                           {item.quantity}
-                        </Badge>
-                        <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7" onClick={() => addToOrder(item)}>
-                           <PlusCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
-                           <span className="sr-only">Добавить 1 {item.name}</span>
-                        </Button>
-                        {/* Add a separate button to remove the item completely */}
-                        <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7 text-destructive/80 hover:text-destructive hover:bg-destructive/10 ml-1" onClick={() => removeEntireItem(item.id)}>
-                            <Trash2 className="h-3.5 w-3.5" />
-                            <span className="sr-only">Удалить {item.name} из заказа</span>
-                        </Button>
-                     </div>
-                   </li>
-                ))}
-              </ul>
-             )}
-          </ScrollArea>
+          <CardContent className={cn("p-0", isSheet ? "px-3 md:px-4" : "p-4 pt-0")}> {/* Desktop gets padding here */}
+              <ScrollArea className={cn(
+                isSheet
+                  ? "h-[calc(80vh-250px)]" // Mobile sheet scroll height
+                  : "max-h-[400px]" // Desktop scroll height - Increased for more visibility
+              )}>
+                 {order.length === 0 ? (
+                  <p className="text-muted-foreground text-center py-3 md:py-4 text-sm">Ваш заказ пуст.</p>
+                 ) : (
+                   <ul className={cn("space-y-2 md:space-y-3", isSheet ? "" : "pr-3")}> {/* Desktop gets padding right on list */}
+                    {order.map((item) => (
+                       <li key={item.id} className="flex justify-between items-center text-sm gap-2">
+                         <div className="flex-grow overflow-hidden"> {/* Allow name to take space */}
+                           <span className="font-medium block truncate">{item.name} {item.volume && <span className="text-xs text-muted-foreground">({item.volume})</span>}</span>
+                            <span className="font-mono text-xs md:text-sm whitespace-nowrap">{(item.price * item.quantity).toFixed(0)} ₽</span>
+                         </div>
+                         <div className="flex items-center gap-1 md:gap-1.5 flex-shrink-0"> {/* Prevent controls from shrinking */}
+                            <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7" onClick={() => removeFromOrder(item.id)}>
+                              <MinusCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                              <span className="sr-only">Убрать 1 {item.name}</span>
+                           </Button>
+                            <Badge variant="secondary" className="px-1.5 py-0 text-xs md:text-sm font-medium min-w-[24px] justify-center"> {/* Quantity display */}
+                               {item.quantity}
+                            </Badge>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7" onClick={() => addToOrder(item)}>
+                               <PlusCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
+                               <span className="sr-only">Добавить 1 {item.name}</span>
+                            </Button>
+                            {/* Add a separate button to remove the item completely */}
+                            <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7 text-destructive/80 hover:text-destructive hover:bg-destructive/10 ml-1" onClick={() => removeEntireItem(item.id)}>
+                                <Trash2 className="h-3.5 w-3.5" />
+                                <span className="sr-only">Удалить {item.name} из заказа</span>
+                            </Button>
+                         </div>
+                       </li>
+                    ))}
+                  </ul>
+                 )}
+              </ScrollArea>
+          </CardContent>
 
-            <Separator className={cn(isSheet ? "mt-2" : "mt-2 lg:mt-0")} />
+            <Separator className={cn(isSheet ? "mt-2" : "mt-0 mb-4 mx-4")} /> {/* Adjusted desktop margins */}
 
-           <SheetFooter className={cn("flex flex-col gap-2 md:gap-3 p-3 md:p-4 pt-3", isSheet ? "flex-col" : "")}>
+           <CardFooter className={cn("flex flex-col gap-2 md:gap-3 p-3 md:p-4 pt-0", isSheet ? "flex-col" : "")}> {/* Desktop gets padding here, remove top padding */}
               {order.length > 0 ? (
                  <>
                   <div className="flex justify-between w-full font-semibold text-sm md:text-base">
@@ -352,7 +359,7 @@ export function OrderBuilder() {
               ) : (
                 <p className="text-muted-foreground text-center text-xs md:text-sm w-full">Добавьте товары, чтобы увидеть итоговую сумму.</p>
               )}
-           </SheetFooter>
+           </CardFooter>
         </>
     );
 
@@ -378,7 +385,7 @@ export function OrderBuilder() {
                     <CardHeader>
                        <CardTitle className="flex items-center justify-between">
                         <span>Текущий заказ</span>
-                        <ShoppingCart className="h-5 w-5 text-primary" />
+                        {/* Removed icon */}
                        </CardTitle>
                     </CardHeader>
                     <CardContent>
@@ -453,7 +460,7 @@ export function OrderBuilder() {
               <SheetTrigger asChild>
                    <Button className="w-full h-12 shadow-lg text-base flex items-center justify-between">
                      <div className="flex items-center gap-2">
-                        <ShoppingCart className="h-5 w-5" />
+                        <ShoppingCart className="h-5 w-5" /> {/* Keep icon on mobile trigger */}
                         {order.length > 0 && (
                             <Badge
                               variant="secondary" // Use secondary for less distraction
@@ -476,13 +483,15 @@ export function OrderBuilder() {
         </div>
 
 
-       {/* Desktop Current Order */}
+       {/* Desktop Current Order - Reverted Layout */}
        <div className="hidden lg:block lg:col-span-1">
-        <Card className="shadow-md lg:sticky lg:top-4 md:top-8">
+         <Card className="shadow-md lg:sticky lg:top-4 md:top-8">
            <OrderDetails />
-        </Card>
+         </Card>
        </div>
 
     </div>
   );
 }
+
+    
