@@ -9,13 +9,13 @@ export default function Home() {
       <header className="flex items-center justify-center mb-8">
         <Coffee className="h-8 w-8 mr-2 text-primary" />
         <h1 className="text-3xl font-bold text-center text-primary">
-          Coffee Order Board
+          Доска заказов кофе
         </h1>
       </header>
       <Tabs defaultValue="order">
         <TabsList className="grid w-full grid-cols-2 max-w-md mx-auto mb-6">
-          <TabsTrigger value="order">Order Builder</TabsTrigger>
-          <TabsTrigger value="manage">Product Management</TabsTrigger>
+          <TabsTrigger value="order">Конструктор заказов</TabsTrigger>
+          <TabsTrigger value="manage">Управление товарами</TabsTrigger>
         </TabsList>
         <TabsContent value="order">
           <OrderBuilder />

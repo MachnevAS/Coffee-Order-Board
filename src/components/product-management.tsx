@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Label } from "@/components/ui/label"; // Keep Label import if needed elsewhere, but FormLabel is used in the form
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Form,
@@ -22,9 +22,9 @@ import { PlusCircle } from "lucide-react";
 import Image from "next/image";
 
 const productSchema = z.object({
-  name: z.string().min(2, "Product name must be at least 2 characters"),
-  price: z.coerce.number().positive("Price must be a positive number"),
-  imageUrl: z.string().url("Must be a valid URL").optional().or(z.literal('')),
+  name: z.string().min(2, "Название товара должно содержать не менее 2 символов"),
+  price: z.coerce.number().positive("Цена должна быть положительным числом"),
+  imageUrl: z.string().url("Должен быть действительный URL").optional().or(z.literal('')),
   dataAiHint: z.string().optional(),
 });
 
@@ -50,16 +50,43 @@ export function ProductManagement() {
     // Load products from localStorage when the component mounts on the client
     const storedProducts = localStorage.getItem("coffeeProducts");
     if (storedProducts) {
-      setProducts(JSON.parse(storedProducts));
+      try {
+          setProducts(JSON.parse(storedProducts));
+      } catch (e) {
+          console.error("Failed to parse products from localStorage", e);
+          // Optionally clear invalid data
+          // localStorage.removeItem("coffeeProducts");
+      }
+
+    } else {
+        // Set default products if none exist in localStorage
+        const defaultProducts: Product[] = [
+         { id: '1', name: 'Эспрессо', price: 150, imageUrl: 'https://picsum.photos/200/150?random=1', dataAiHint: 'espresso coffee' },
+         { id: '2', name: 'Латте', price: 250, imageUrl: 'https://picsum.photos/200/150?random=2', dataAiHint: 'latte coffee art' },
+         { id: '3', name: 'Капучино', price: 200, imageUrl: 'https://picsum.photos/200/150?random=3', dataAiHint: 'cappuccino froth' },
+         { id: '4', name: 'Американо', price: 180, imageUrl: 'https://picsum.photos/200/150?random=4', dataAiHint: 'americano black coffee' },
+       ];
+       setProducts(defaultProducts);
+       localStorage.setItem("coffeeProducts", JSON.stringify(defaultProducts));
     }
    }, []);
 
    // Persist products to localStorage whenever they change
    useEffect(() => {
     if (isClient) {
-        localStorage.setItem("coffeeProducts", JSON.stringify(products));
+        try {
+            localStorage.setItem("coffeeProducts", JSON.stringify(products));
+        } catch (e) {
+            console.error("Failed to save products to localStorage", e);
+             toast({
+               title: "Ошибка сохранения",
+               description: "Не удалось сохранить список товаров.",
+               variant: "destructive",
+             });
+        }
+
     }
-   }, [products, isClient]);
+   }, [products, isClient, toast]); // Added toast dependency
 
 
   const onSubmit = (data: ProductFormData) => {
@@ -76,8 +103,8 @@ export function ProductManagement() {
     setProducts((prevProducts) => [...prevProducts, newProduct]);
 
     toast({
-      title: "Product Added",
-      description: `${data.name} has been added successfully.`,
+      title: "Товар добавлен",
+      description: `${data.name} успешно добавлен.`,
     });
     form.reset(); // Reset the form fields
   };
@@ -86,15 +113,15 @@ export function ProductManagement() {
     if (!isClient) return;
     setProducts((prevProducts) => prevProducts.filter((p) => p.id !== id));
     toast({
-      title: "Product Removed",
-      description: "The product has been removed.",
+      title: "Товар удален",
+      description: "Товар был удален.",
       variant: "destructive",
     });
   };
 
 
    if (!isClient) {
-    return <div>Loading product management...</div>; // Or a skeleton loader
+    return <div>Загрузка управления товарами...</div>; // Or a skeleton loader
    }
 
 
@@ -104,7 +131,7 @@ export function ProductManagement() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="flex items-center">
-             <PlusCircle className="h-5 w-5 mr-2 text-primary" /> Add New Product
+             <PlusCircle className="h-5 w-5 mr-2 text-primary" /> Добавить новый товар
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -115,9 +142,9 @@ export function ProductManagement() {
                 name="name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Product Name</FormLabel>
+                    <FormLabel>Название товара</FormLabel>
                     <FormControl>
-                      <Input placeholder="e.g., Iced Latte" {...field} />
+                      <Input placeholder="например, Латте со льдом" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -128,9 +155,9 @@ export function ProductManagement() {
                 name="price"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Price ($)</FormLabel>
+                    <FormLabel>Цена (₽)</FormLabel>
                     <FormControl>
-                      <Input type="number" step="0.01" placeholder="e.g., 4.50" {...field} />
+                      <Input type="number" step="1" placeholder="например, 250" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -141,7 +168,7 @@ export function ProductManagement() {
                 name="imageUrl"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Image URL (Optional)</FormLabel>
+                    <FormLabel>URL изображения (необязательно)</FormLabel>
                     <FormControl>
                       <Input placeholder="https://example.com/image.jpg" {...field} />
                     </FormControl>
@@ -154,15 +181,15 @@ export function ProductManagement() {
                 name="dataAiHint"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Image Search Hint (Optional)</FormLabel>
+                    <FormLabel>Подсказка для поиска изображения (необязательно)</FormLabel>
                     <FormControl>
-                      <Input placeholder="e.g. iced coffee" {...field} />
+                      <Input placeholder="например, кофе со льдом" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-              <Button type="submit" className="w-full bg-accent hover:bg-accent/90">Add Product</Button>
+              <Button type="submit" className="w-full bg-accent hover:bg-accent/90">Добавить товар</Button>
             </form>
           </Form>
         </CardContent>
@@ -171,11 +198,11 @@ export function ProductManagement() {
        {/* Existing Products List */}
        <Card className="shadow-lg">
         <CardHeader>
-          <CardTitle>Existing Products</CardTitle>
+          <CardTitle>Существующие товары</CardTitle>
         </CardHeader>
         <CardContent className="max-h-[600px] overflow-y-auto">
           {products.length === 0 ? (
-            <p className="text-muted-foreground text-center py-4">No products added yet.</p>
+            <p className="text-muted-foreground text-center py-4">Товары еще не добавлены.</p>
           ) : (
             <ul className="space-y-4">
               {products.map((product) => (
@@ -187,19 +214,19 @@ export function ProductManagement() {
                           alt={product.name}
                           layout="fill"
                           objectFit="cover"
-                          data-ai-hint={product.dataAiHint || 'coffee'}
+                          data-ai-hint={product.dataAiHint || 'кофе'}
                           className="bg-muted"
                         />
                     </div>
 
                     <div>
                         <p className="font-medium">{product.name}</p>
-                        <p className="text-sm text-muted-foreground">${product.price.toFixed(2)}</p>
+                        <p className="text-sm text-muted-foreground">{product.price.toFixed(2)} ₽</p>
                     </div>
                    </div>
 
                   <Button variant="destructive" size="sm" onClick={() => removeProduct(product.id)}>
-                    Remove
+                    Удалить
                   </Button>
                 </li>
               ))}

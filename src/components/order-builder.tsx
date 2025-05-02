@@ -29,10 +29,10 @@ export function OrderBuilder() {
     } else {
        // Add some default products if none are found in local storage
        const defaultProducts: Product[] = [
-        { id: '1', name: 'Espresso', price: 2.50, imageUrl: 'https://picsum.photos/200/150?random=1', dataAiHint: 'espresso coffee' },
-        { id: '2', name: 'Latte', price: 3.50, imageUrl: 'https://picsum.photos/200/150?random=2', dataAiHint: 'latte coffee art' },
-        { id: '3', name: 'Cappuccino', price: 3.00, imageUrl: 'https://picsum.photos/200/150?random=3', dataAiHint: 'cappuccino froth' },
-        { id: '4', name: 'Americano', price: 2.75, imageUrl: 'https://picsum.photos/200/150?random=4', dataAiHint: 'americano black coffee' },
+        { id: '1', name: 'Эспрессо', price: 150, imageUrl: 'https://picsum.photos/200/150?random=1', dataAiHint: 'espresso coffee' },
+        { id: '2', name: 'Латте', price: 250, imageUrl: 'https://picsum.photos/200/150?random=2', dataAiHint: 'latte coffee art' },
+        { id: '3', name: 'Капучино', price: 200, imageUrl: 'https://picsum.photos/200/150?random=3', dataAiHint: 'cappuccino froth' },
+        { id: '4', name: 'Американо', price: 180, imageUrl: 'https://picsum.photos/200/150?random=4', dataAiHint: 'americano black coffee' },
       ];
       setProducts(defaultProducts);
       localStorage.setItem("coffeeProducts", JSON.stringify(defaultProducts));
@@ -81,8 +81,8 @@ export function OrderBuilder() {
 
     if (order.length === 0) {
         toast({
-            title: "Order Empty",
-            description: "Please add items to your order before checking out.",
+            title: "Заказ пуст",
+            description: "Пожалуйста, добавьте товары в заказ перед оформлением.",
             variant: "destructive",
         });
         return;
@@ -101,15 +101,15 @@ export function OrderBuilder() {
       localStorage.setItem("coffeeOrders", JSON.stringify(pastOrders));
 
       toast({
-        title: "Order Placed!",
-        description: `Total: $${totalPrice.toFixed(2)}. Your order has been saved.`,
+        title: "Заказ оформлен!",
+        description: `Итого: ${totalPrice.toFixed(2)} ₽. Ваш заказ сохранен.`,
       });
       clearOrder(); // Clear the order after successful checkout
     } catch (error) {
        console.error("Failed to save order:", error);
        toast({
-         title: "Checkout Failed",
-         description: "Could not save the order. Please try again.",
+         title: "Ошибка оформления заказа",
+         description: "Не удалось сохранить заказ. Пожалуйста, попробуйте еще раз.",
          variant: "destructive",
        });
     }
@@ -117,16 +117,16 @@ export function OrderBuilder() {
 
 
   if (!isClient) {
-    return <div>Loading products...</div>; // Or a skeleton loader
+    return <div>Загрузка товаров...</div>; // Or a skeleton loader
   }
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
       {/* Product List */}
       <div className="lg:col-span-2">
-        <h2 className="text-2xl font-semibold mb-4 text-primary">Available Products</h2>
+        <h2 className="text-2xl font-semibold mb-4 text-primary">Доступные товары</h2>
         {products.length === 0 ? (
-           <p className="text-muted-foreground">No products available. Add some in the Product Management tab.</p>
+           <p className="text-muted-foreground">Товары отсутствуют. Добавьте их во вкладке "Управление товарами".</p>
         ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {products.map((product) => (
@@ -145,11 +145,11 @@ export function OrderBuilder() {
               </CardHeader>
               <CardContent className="p-4">
                  <CardTitle className="text-lg mb-1">{product.name}</CardTitle>
-                 <p className="text-muted-foreground font-semibold">${product.price.toFixed(2)}</p>
+                 <p className="text-muted-foreground font-semibold">{product.price.toFixed(2)} ₽</p>
               </CardContent>
               <CardFooter className="p-4 pt-0">
                 <Button onClick={() => addToOrder(product)} className="w-full" variant="outline">
-                  <PlusCircle className="mr-2 h-4 w-4" /> Add to Order
+                  <PlusCircle className="mr-2 h-4 w-4" /> Добавить в заказ
                 </Button>
               </CardFooter>
             </Card>
@@ -163,13 +163,13 @@ export function OrderBuilder() {
         <Card className="sticky top-8 shadow-lg">
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
-              <span>Current Order</span>
+              <span>Текущий заказ</span>
                <ShoppingCart className="h-5 w-5 text-primary" />
             </CardTitle>
           </CardHeader>
           <CardContent className="max-h-[400px] overflow-y-auto">
             {order.length === 0 ? (
-              <p className="text-muted-foreground text-center py-4">Your order is empty.</p>
+              <p className="text-muted-foreground text-center py-4">Ваш заказ пуст.</p>
             ) : (
               <ul className="space-y-3">
                 {order.map((item) => (
@@ -179,7 +179,7 @@ export function OrderBuilder() {
                       <Badge variant="secondary" className="ml-2 px-1.5 py-0.5">{item.quantity}</Badge>
                     </div>
                     <div className="flex items-center gap-2">
-                       <span className="font-mono">${(item.price * item.quantity).toFixed(2)}</span>
+                       <span className="font-mono">{(item.price * item.quantity).toFixed(2)} ₽</span>
                       <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeFromOrder(item.id)}>
                          <MinusCircle className="h-4 w-4 text-destructive" />
                       </Button>
@@ -195,22 +195,22 @@ export function OrderBuilder() {
              {order.length > 0 && (
                 <>
                  <div className="flex justify-between w-full font-semibold text-lg">
-                    <span>Total:</span>
-                    <span>${totalPrice.toFixed(2)}</span>
+                    <span>Итого:</span>
+                    <span>{totalPrice.toFixed(2)} ₽</span>
                  </div>
                  <div className="flex gap-2 w-full">
                     <Button onClick={handleCheckout} className="flex-1 bg-accent hover:bg-accent/90">
-                    Checkout
+                    Оформить заказ
                     </Button>
                     <Button variant="outline" onClick={clearOrder} className="flex-1">
-                        <Trash2 className="mr-2 h-4 w-4" /> Clear Order
+                        <Trash2 className="mr-2 h-4 w-4" /> Очистить заказ
                     </Button>
                  </div>
 
                 </>
              )}
               {order.length === 0 && (
-                 <p className="text-muted-foreground text-center w-full">Add items to see your total.</p>
+                 <p className="text-muted-foreground text-center w-full">Добавьте товары, чтобы увидеть итоговую сумму.</p>
               )}
           </CardFooter>
         </Card>

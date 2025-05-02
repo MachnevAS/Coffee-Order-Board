@@ -2,7 +2,8 @@
 
 import * as React from "react"
 import { ChevronLeft, ChevronRight } from "lucide-react"
-import { DayPicker } from "react-day-picker"
+import { DayPicker, CaptionLayout } from "react-day-picker"
+import { ru } from 'date-fns/locale'; // Import Russian locale
 
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "@/components/ui/button"
@@ -17,6 +18,7 @@ function Calendar({
 }: CalendarProps) {
   return (
     <DayPicker
+      locale={ru} // Set locale to Russian
       showOutsideDays={showOutsideDays}
       className={cn("p-3", className)}
       classNames={{
@@ -24,6 +26,7 @@ function Calendar({
         month: "space-y-4",
         caption: "flex justify-center pt-1 relative items-center",
         caption_label: "text-sm font-medium",
+        caption_dropdowns: "flex justify-center gap-1", // Added for dropdowns
         nav: "space-x-1 flex items-center",
         nav_button: cn(
           buttonVariants({ variant: "outline" }),
@@ -46,25 +49,44 @@ function Calendar({
           "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
         day_today: "bg-accent text-accent-foreground",
         day_outside:
-          "day-outside text-muted-foreground aria-selected:bg-accent/50 aria-selected:text-muted-foreground",
+          "day-outside text-muted-foreground opacity-50 aria-selected:bg-accent/50 aria-selected:text-muted-foreground aria-selected:opacity-30", // Adjusted opacity
         day_disabled: "text-muted-foreground opacity-50",
         day_range_middle:
           "aria-selected:bg-accent aria-selected:text-accent-foreground",
         day_hidden: "invisible",
+        dropdown: "rdp-dropdown bg-card text-card-foreground border border-input rounded-md px-1 py-0.5 text-sm focus:ring-ring focus:outline-none focus:ring-1", // Style dropdowns
+        dropdown_month: "rdp-dropdown_month",
+        dropdown_year: "rdp-dropdown_year",
         ...classNames,
       }}
       components={{
-        IconLeft: ({ className, ...props }) => (
-          <ChevronLeft className={cn("h-4 w-4", className)} {...props} />
-        ),
-        IconRight: ({ className, ...props }) => (
-          <ChevronRight className={cn("h-4 w-4", className)} {...props} />
-        ),
+        IconLeft: ({ ...props }) => <ChevronLeft className="h-4 w-4" {...props} />,
+        IconRight: ({ ...props }) => <ChevronRight className="h-4 w-4" {...props} />,
+        // Use Dropdown layout for caption
+        Caption: (props) => <DayPickerCaption {...props} />,
       }}
       {...props}
     />
   )
 }
 Calendar.displayName = "Calendar"
+
+
+// Custom Caption component to enable dropdowns
+function DayPickerCaption(props: React.ComponentProps<typeof CaptionLayout>) {
+    const { displayMonth, locale } = props;
+    const currentYear = new Date().getFullYear();
+    const fromYear = currentYear - 10; // Adjust range as needed
+    const toYear = currentYear + 10;
+
+    return (
+      <CaptionLayout
+        {...props}
+        // Format month names using locale
+        formatters={{ formatCaption: (date) => <>{locale?.localize?.month(date.getMonth())} {date.getFullYear()}</> }}
+      />
+    );
+}
+
 
 export { Calendar }
