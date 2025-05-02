@@ -99,6 +99,7 @@ export function OrderBuilder() {
       } else {
          console.log("OrderBuilder: No valid sort option found in localStorage, using default.");
          // Keep default 'name-asc'
+         localStorage.setItem(SORT_STORAGE_KEY, 'name-asc'); // Persist the default
       }
 
     } catch (lsError) {
@@ -125,7 +126,7 @@ export function OrderBuilder() {
     }
   }, [order, isClient]);
 
-   // Effect to handle storage changes for products
+   // Effect to handle storage changes for products and orders
    useEffect(() => {
     if (!isClient) return;
 
@@ -167,9 +168,10 @@ export function OrderBuilder() {
         });
       }
       // Listen for order changes to potentially refresh popularity
-      if (event.key === "coffeeOrders" && sortOption === 'popularity-desc') {
-         console.log("OrderBuilder: Detected order change, refreshing popularity sort.");
-         setPopularityVersion(v => v + 1); // Trigger recalculation
+      if (event.key === "coffeeOrders") {
+         console.log("OrderBuilder: Detected order change, potentially refreshing popularity.");
+         // Trigger recalculation only if sorting by popularity
+         setPopularityVersion(v => v + 1); // Use a simple increment to trigger useMemo
       }
     };
 
@@ -177,7 +179,7 @@ export function OrderBuilder() {
     return () => {
       window.removeEventListener('storage', handleStorageChange);
     };
-  }, [isClient, sortOption]); // Rerun if isClient or sortOption changes
+  }, [isClient]); // Removed sortOption dependency, popularityVersion handles the refresh trigger
 
 
   // Function to update sort option and save to localStorage
@@ -198,7 +200,7 @@ export function OrderBuilder() {
   const filteredAndSortedProducts = useMemo(() => {
     if (!isClient) return []; // Return empty array on server
 
-    console.log("OrderBuilder: Recalculating filtered/sorted products. PopularityVersion:", popularityVersion); // Log recalculation
+    console.log("OrderBuilder: Recalculating filtered/sorted products. Sort:", sortOption, "PopularityVersion:", popularityVersion); // Log recalculation
     let result = [...products]; // Create a copy to avoid mutating original state
 
     // 1. Filter by search term
@@ -237,19 +239,23 @@ export function OrderBuilder() {
                 });
               });
                console.log("OrderBuilder: Popularity map calculated:", Object.fromEntries(popularityMap));
+            } else {
+               console.warn("OrderBuilder: Invalid order data found in localStorage for popularity sort.");
             }
           }
         } catch (e) {
           console.error("Error reading or parsing sales history for sorting:", e);
           // Proceed without popularity data if error occurs
         }
-        result.sort((a, b) => (popularityMap.get(b.id) || 0) - (popularityMap.get(a.id) || 0));
+        // Sort primarily by popularity (desc), secondarily by name (asc) for tie-breaking
+        result.sort((a, b) => {
+           const popDiff = (popularityMap.get(b.id) || 0) - (popularityMap.get(a.id) || 0);
+           if (popDiff !== 0) return popDiff;
+           return a.name.localeCompare(b.name); // Tie-breaker
+        });
         break;
       }
-      default: // Should technically not happen with the new SortOption type, but good practice
-         // Fallback to name-asc if something goes wrong or state is invalid
-        result.sort((a, b) => a.name.localeCompare(b.name));
-        break;
+      // No default case needed as 'name-asc' is the default state value
     }
 
     return result;
@@ -346,22 +352,33 @@ export function OrderBuilder() {
 
     try {
       // Ensure the loaded data is treated as Order[]
-      const pastOrders: Order[] = JSON.parse(localStorage.getItem("coffeeOrders") || "[]");
-      pastOrders.push(orderData);
-      localStorage.setItem("coffeeOrders", JSON.stringify(pastOrders));
+      let pastOrders: Order[] = [];
+      const storedOrders = localStorage.getItem("coffeeOrders");
+      if(storedOrders) {
+          try {
+              const parsed = JSON.parse(storedOrders);
+              if (Array.isArray(parsed)) {
+                  pastOrders = parsed;
+              } else {
+                   console.warn("Invalid past orders data found, starting fresh.");
+              }
+          } catch (parseError) {
+              console.error("Failed to parse past orders, starting fresh.", parseError);
+          }
+      }
 
-      // Dispatch storage event to notify other components (like SalesHistory and itself for popularity update)
+      pastOrders.push(orderData);
+      const newOrdersJson = JSON.stringify(pastOrders);
+      localStorage.setItem("coffeeOrders", newOrdersJson);
+
+      // Dispatch storage event to notify other components (like SalesHistory and potentially itself for popularity update)
       window.dispatchEvent(new StorageEvent('storage', {
           key: 'coffeeOrders',
-          newValue: JSON.stringify(pastOrders),
+          newValue: newOrdersJson,
           storageArea: localStorage,
       }));
 
-      // If sorting by popularity, trigger a recalculation
-      if (sortOption === 'popularity-desc') {
-          setPopularityVersion(v => v + 1);
-      }
-
+      // No need to call setPopularityVersion here, the storage event listener will handle it
 
       toast({
         title: "Заказ оформлен!",
@@ -383,21 +400,9 @@ export function OrderBuilder() {
   const OrderDetails = ({ isSheet = false }: { isSheet?: boolean }) => (
     <>
        {/* Header with Title (conditionally rendered inside SheetContent or Card) */}
-       {isSheet && (
-          <SheetHeader className="p-3 md:p-4 border-b text-left">
-              <SheetTitle id={orderSheetTitleId}>Текущий заказ</SheetTitle>
-          </SheetHeader>
-       )}
-       {!isSheet && (
-          <CardHeader
-              className="p-3 md:p-4 pb-3"
-              aria-labelledby={orderCardTitleId}
-          >
-              <CardTitle id={orderCardTitleId} className="text-xl">Текущий заказ</CardTitle>
-          </CardHeader>
-        )}
+       {/* Title is now rendered inside SheetContent or Card directly for accessibility */}
 
-      {/* Content Area with Scroll */}
+       {/* Content Area with Scroll */}
        <CardContent className={cn(
           "p-0 flex-grow overflow-hidden min-h-0",
           isSheet ? "px-3 md:px-4" : "px-4 pt-0"
@@ -412,7 +417,7 @@ export function OrderBuilder() {
                      key={item.id}
                      className={cn(
                         "flex justify-between items-center text-sm gap-2 py-1 px-1 rounded-sm",
-                         (index % 2 !== 0 ? 'bg-muted/50' : 'bg-card')
+                         (index % 2 !== 0 ? 'bg-muted/50' : 'bg-card') // Add zebra striping
                      )}
                    >
                      <div className="flex-grow overflow-hidden mr-1">
@@ -656,8 +661,13 @@ export function OrderBuilder() {
                  className="rounded-t-lg h-[75vh] flex flex-col p-0"
                  aria-labelledby={orderSheetTitleId} // Use the unique ID for aria-labelledby
               >
-                  {/* OrderDetails now renders its own header and title */}
-                  <OrderDetails isSheet={true} />
+                    {/* Moved SheetHeader and SheetTitle here */}
+                    <SheetHeader className="p-3 md:p-4 border-b text-left">
+                        <SheetTitle id={orderSheetTitleId}>Текущий заказ</SheetTitle>
+                    </SheetHeader>
+                    {/* OrderDetails renders content and footer */}
+                    <OrderDetails isSheet={true} />
+
               </SheetContent>
             </Sheet>
         </div>
@@ -667,11 +677,15 @@ export function OrderBuilder() {
        <div className="hidden lg:block lg:col-span-1">
          {/* Made Card sticky and flex column, set max-height */}
          <Card className="shadow-md lg:sticky lg:top-4 md:top-8 max-h-[calc(100vh-4rem)] flex flex-col">
-            <VisuallyHidden>
-                 {/* Title is now rendered inside OrderDetails for better accessibility structure */}
-                 <SheetTitle id={orderCardTitleId}>Текущий заказ (Десктоп)</SheetTitle> {/* Added hidden title for accessibility */}
-            </VisuallyHidden>
-           <OrderDetails />
+            {/* Moved CardHeader and CardTitle here for desktop */}
+             <CardHeader
+                 className="p-3 md:p-4 pb-3 flex-shrink-0"
+                 aria-labelledby={orderCardTitleId}
+             >
+                 <CardTitle id={orderCardTitleId} className="text-xl">Текущий заказ</CardTitle>
+             </CardHeader>
+             {/* OrderDetails renders content and footer */}
+            <OrderDetails />
          </Card>
        </div>
 
