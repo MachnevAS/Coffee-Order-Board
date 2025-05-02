@@ -165,10 +165,10 @@ export function OrderBuilder() {
         return [...prevOrder, { ...product, quantity: 1 }];
       }
     });
-     // Open sheet on mobile when first item is added
-     if (order.length === 0 && !isSheetOpen && window.innerWidth < 1024) { // Check screen size
-        setIsSheetOpen(true);
-     }
+    // REMOVED: Automatic sheet opening logic
+    // if (order.length === 0 && !isSheetOpen && window.innerWidth < 1024) {
+    //    setIsSheetOpen(true);
+    // }
   };
 
     const removeFromOrder = (productId: string) => {
@@ -261,7 +261,7 @@ export function OrderBuilder() {
         <>
           {/* Visible Title for Desktop, remains part of OrderDetails */}
           <CardHeader className={cn("p-3 md:p-4 flex-shrink-0", isSheet ? "pb-2" : "pb-3")}>
-            <CardTitle
+             <CardTitle
               className={cn("text-lg flex items-center justify-between", isSheet ? "sr-only" : "text-xl")} // Hide visually on sheet
             >
               <span>Текущий заказ</span>
@@ -472,7 +472,7 @@ export function OrderBuilder() {
                               {order.reduce((sum, item) => sum + item.quantity, 0)} поз.
                             </Badge>
                           )}
-                        <span>Корзина</span>
+                        <span>Текущий заказ</span> {/* Changed label */}
                      </div>
                      {totalPrice > 0 && (
                         <span className="font-semibold">{totalPrice.toFixed(0)} ₽</span>
