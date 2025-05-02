@@ -313,7 +313,7 @@ export function ProductManagement() {
               <FormField control={form.control} name="price" render={({ field }) => ( <FormItem><FormLabel>Цена (₽)</FormLabel><FormControl><Input type="text" inputMode="numeric" pattern="[0-9]*([\.,][0-9]+)?" placeholder="например, 165" {...field} /></FormControl><FormMessage /></FormItem> )} />
               <FormField control={form.control} name="imageUrl" render={({ field }) => ( <FormItem><FormLabel>URL изображения (необязательно)</FormLabel><FormControl><Input placeholder="https://..." {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem> )} />
               <FormField control={form.control} name="dataAiHint" render={({ field }) => ( <FormItem><FormLabel>Подсказка для ИИ-изображения (необязательно)</FormLabel><FormControl><Input placeholder="например, латте арт" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem> )} />
-              <Button type="submit" className="w-full bg-accent hover:bg-accent/90">Добавить товар</Button>
+              <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-sm px-3">Добавить товар</Button> {/* Adjusted text size and padding */}
             </form>
           </Form>
         </CardContent>
@@ -323,8 +323,8 @@ export function ProductManagement() {
        <Card className="shadow-md flex flex-col h-full"> {/* Ensure card takes full height */}
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-lg md:text-xl">Существующие товары</CardTitle>
-           <Button variant="outline" size="sm" onClick={loadRawProducts}>
-             <FilePlus2 className="h-4 w-4 mr-2" /> Загрузить начальные
+           <Button variant="outline" size="sm" onClick={loadRawProducts} className="text-xs px-2 h-8"> {/* Adjusted text size and padding */}
+             <FilePlus2 className="h-4 w-4 mr-1" /> Загрузить начальные
            </Button>
         </CardHeader>
         <CardContent className="flex-grow overflow-hidden p-0"> {/* Remove padding, let ScrollArea handle it */}
@@ -344,8 +344,8 @@ export function ProductManagement() {
                              <FormField control={editForm.control} name="imageUrl" render={({ field }) => ( <FormItem><FormLabel className="text-xs">URL изображения</FormLabel><FormControl><Input {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
                              <FormField control={editForm.control} name="dataAiHint" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Подсказка ИИ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
                              <div className="flex justify-end gap-2 pt-2">
-                                  <Button type="button" variant="ghost" size="sm" onClick={cancelEditing}><X className="h-4 w-4 mr-1" /> Отмена</Button>
-                                  <Button type="submit" size="sm"><Save className="h-4 w-4 mr-1" /> Сохранить</Button>
+                                  <Button type="button" variant="ghost" size="sm" onClick={cancelEditing} className="text-xs px-2 h-8"><X className="h-4 w-4 mr-1" /> Отмена</Button> {/* Adjusted text size and padding */}
+                                  <Button type="submit" size="sm" className="text-xs px-2 h-8"><Save className="h-4 w-4 mr-1" /> Сохранить</Button> {/* Adjusted text size and padding */}
                              </div>
                           </form>
                       </Form>
@@ -356,8 +356,8 @@ export function ProductManagement() {
                                <Image
                                 src={product.imageUrl || `https://picsum.photos/100/100?random=${product.id}`}
                                 alt={product.name}
-                                layout="fill"
-                                objectFit="cover"
+                                fill
+                                style={{objectFit:"cover"}}
                                 data-ai-hint={product.dataAiHint || 'кофе'}
                                 className="bg-muted"
                                  sizes="40px md:48px"
@@ -397,8 +397,8 @@ export function ProductManagement() {
                                       </AlertDialogDescription>
                                       </AlertDialogHeader>
                                       <AlertDialogFooter>
-                                      <AlertDialogCancel>Отмена</AlertDialogCancel>
-                                      <AlertDialogAction onClick={() => removeProduct(product.id)} className={buttonVariants({ variant: "destructive" })}>
+                                      <AlertDialogCancel className="text-xs px-3 h-9">Отмена</AlertDialogCancel> {/* Adjusted size */}
+                                      <AlertDialogAction onClick={() => removeProduct(product.id)} className={buttonVariants({ variant: "destructive", size:"sm", className:"text-xs px-3 h-9" })}> {/* Adjusted size */}
                                           Удалить
                                       </AlertDialogAction>
                                       </AlertDialogFooter>

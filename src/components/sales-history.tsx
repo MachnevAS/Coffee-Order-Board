@@ -220,7 +220,7 @@ export function SalesHistory() {
             <PopoverTrigger asChild>
               <Button
                 variant={'outline'}
-                className="w-full sm:w-auto justify-start text-left font-normal text-xs md:text-sm h-9 md:h-10" // Adjusted size/height
+                className="w-full sm:w-auto justify-start text-left font-normal text-xs md:text-sm h-9 md:h-10 px-3" // Adjusted size/height and padding
               >
                 <CalendarIcon className="mr-1.5 h-3.5 w-3.5" /> {/* Adjusted margin/size */}
                 {dateRange?.from ? (
@@ -233,7 +233,7 @@ export function SalesHistory() {
                     format(dateRange.from, 'dd MMM y', { locale: ru })
                   )
                 ) : (
-                  <span>Выберите дату или диапазон</span>
+                  <span>Выберите дату</span>
                 )}
               </Button>
             </PopoverTrigger>
@@ -261,7 +261,7 @@ export function SalesHistory() {
             </PopoverContent>
           </Popover>
 
-          <Button onClick={handleExport} disabled={filteredOrders.length === 0} size="sm" className="h-9 md:h-10 text-xs md:text-sm"> {/* Adjusted size/height */}
+          <Button onClick={handleExport} disabled={filteredOrders.length === 0} size="sm" className="h-9 md:h-10 text-xs md:text-sm px-3"> {/* Adjusted size/height and padding */}
             <Download className="mr-1.5 h-3.5 w-3.5" /> {/* Adjusted margin/size */}
             Выгрузить в Excel
           </Button>
@@ -333,8 +333,8 @@ export function SalesHistory() {
                                    </AlertDialogDescription>
                                </AlertDialogHeader>
                                <AlertDialogFooter>
-                                   <AlertDialogCancel>Отмена</AlertDialogCancel>
-                                   <AlertDialogAction onClick={() => handleDeleteOrder(order.id)} className={buttonVariants({ variant: "destructive" })}>
+                                   <AlertDialogCancel className="text-xs px-3 h-9">Отмена</AlertDialogCancel> {/* Adjusted size */}
+                                   <AlertDialogAction onClick={() => handleDeleteOrder(order.id)} className={buttonVariants({ variant: "destructive", size:"sm", className:"text-xs px-3 h-9" })}> {/* Adjusted size */}
                                        Удалить
                                    </AlertDialogAction>
                                </AlertDialogFooter>

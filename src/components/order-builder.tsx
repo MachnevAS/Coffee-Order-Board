@@ -283,7 +283,7 @@ export function OrderBuilder() {
                  <p className="text-xs md:text-sm text-foreground font-semibold">{product.price.toFixed(0)} ₽</p>
               </CardContent>
               <CardFooter className="p-1.5 md:p-2 pt-0 mt-auto">
-                <Button onClick={() => addToOrder(product)} className="w-full h-7 md:h-8 text-xs" variant="outline">
+                <Button onClick={() => addToOrder(product)} className="w-full h-7 md:h-8 text-xs px-2" variant="outline"> {/* Adjusted px */}
                   <PlusCircle className="mr-1 h-3 w-3" /> Добавить
                 </Button>
               </CardFooter>
@@ -355,15 +355,15 @@ export function OrderBuilder() {
                             variant={selectedPaymentMethod === method ? "default" : "outline"}
                             onClick={() => setSelectedPaymentMethod(method)}
                             className={cn(
-                                "h-8 md:h-9 text-xs md:text-sm flex-col items-center justify-center px-1 py-1 leading-tight", // Added flex-col, adjusted padding/line-height
+                                "h-auto min-h-[48px] md:min-h-[56px] text-xs flex-col items-center justify-center px-1 py-1.5 leading-tight", // Use h-auto, min-height, adjusted py/px
                                 selectedPaymentMethod === method ? 'bg-accent hover:bg-accent/90 text-accent-foreground' : ''
                             )}
-                            size="sm" // Use sm size for smaller buttons
+                            size="sm" // Keep sm size for consistent styling base
                            >
-                             {method === 'Наличные' && <Banknote className="h-3 w-3 md:h-4 md:w-4 mb-0.5" />}
-                             {method === 'Карта' && <CreditCard className="h-3 w-3 md:h-4 md:w-4 mb-0.5" />}
-                             {method === 'Перевод' && <Smartphone className="h-3 w-3 md:h-4 md:w-4 mb-0.5" />}
-                             {method}
+                             {method === 'Наличные' && <Banknote className="h-3.5 w-3.5 md:h-4 md:w-4 mb-1" />} {/* Increased mb */}
+                             {method === 'Карта' && <CreditCard className="h-3.5 w-3.5 md:h-4 md:w-4 mb-1" />} {/* Increased mb */}
+                             {method === 'Перевод' && <Smartphone className="h-3.5 w-3.5 md:h-4 md:w-4 mb-1" />} {/* Increased mb */}
+                             <span className="text-center block">{method}</span> {/* Added span for better control */}
                            </Button>
                         ))}
                     </div>
@@ -373,12 +373,12 @@ export function OrderBuilder() {
                  <div className="flex gap-2 w-full pt-2">
                     <Button
                         onClick={handleCheckout}
-                        className="flex-1 h-8 md:h-9 text-xs md:text-sm bg-primary hover:bg-primary/90" // Changed to primary color
+                        className="flex-1 h-8 md:h-9 text-xs md:text-sm bg-primary hover:bg-primary/90 px-2" // Adjusted px
                         disabled={!selectedPaymentMethod} // Disable if no payment method selected
                     >
                     Оформить заказ
                     </Button>
-                    <Button variant="outline" onClick={clearOrder} className="h-8 md:h-9 text-xs md:text-sm px-3">
+                    <Button variant="outline" onClick={clearOrder} className="h-8 md:h-9 text-xs md:text-sm px-2"> {/* Adjusted px */}
                         <Trash2 className="mr-1 h-3 w-3" /> Очистить
                     </Button>
                  </div>
@@ -394,4 +394,3 @@ export function OrderBuilder() {
     </div>
   );
 }
-
