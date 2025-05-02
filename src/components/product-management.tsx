@@ -72,58 +72,104 @@ export function ProductManagement() {
   });
 
    useEffect(() => {
+    // This effect runs only once on the client after hydration
     setIsClient(true);
-    // Load products from localStorage when the component mounts on the client
-    const storedProducts = localStorage.getItem("coffeeProducts");
-    if (storedProducts) {
-      try {
-          const parsedProducts: Product[] = JSON.parse(storedProducts);
-          // Basic validation: check if it's an array and has items
-          if (Array.isArray(parsedProducts) && parsedProducts.length > 0) {
-             setProducts(parsedProducts);
-          } else {
-             console.warn("Stored products invalid or empty, falling back to defaults.");
-             const defaultProds = getDefaultProducts();
-             setProducts(defaultProds);
-             localStorage.setItem("coffeeProducts", JSON.stringify(defaultProds));
-          }
-      } catch (e) {
-          console.error("Failed to parse products from localStorage, falling back to defaults.", e);
-          const defaultProds = getDefaultProducts();
-          setProducts(defaultProds);
-          localStorage.setItem("coffeeProducts", JSON.stringify(defaultProds));
-      }
-    } else {
-        // Set default products if none exist in localStorage
-       const defaultProds = getDefaultProducts();
-       setProducts(defaultProds);
-       localStorage.setItem("coffeeProducts", JSON.stringify(defaultProds));
+    console.log("ProductManagement: useEffect running, isClient=true"); // Log start
+
+    let loadedProducts: Product[] | null = null; // Temp variable to store products to be set
+
+    try { // Wrap all localStorage access
+        const storedProducts = localStorage.getItem("coffeeProducts");
+        console.log("ProductManagement: storedProducts from localStorage:", storedProducts ? storedProducts.substring(0, 100) + '...' : null); // Log stored data
+
+        if (storedProducts) {
+            try {
+              const parsedProducts: any = JSON.parse(storedProducts); // Use 'any' temporarily for validation
+              // More robust validation: check if it's an array and items have basic product structure
+              if (Array.isArray(parsedProducts) && parsedProducts.length > 0 && parsedProducts.every(p => p && typeof p.id === 'string' && typeof p.name === 'string' && typeof p.price === 'number')) {
+                 console.log("ProductManagement: Parsed valid products from localStorage.", parsedProducts.length);
+                 loadedProducts = parsedProducts as Product[]; // Assign to temp variable after validation
+              } else {
+                 console.warn("ProductManagement: Stored products invalid structure or empty, falling back to defaults.");
+                 localStorage.removeItem("coffeeProducts"); // Clear invalid data
+              }
+            } catch (e) {
+              console.error("ProductManagement: Failed to parse products from localStorage, falling back to defaults.", e);
+              localStorage.removeItem("coffeeProducts"); // Clear invalid data
+            }
+        } else {
+            console.log("ProductManagement: No products found in localStorage, using defaults.");
+        }
+
+        // If loadedProducts is still null (no valid data found or parsing failed), use defaults
+        if (loadedProducts === null) {
+            const defaultProds = getDefaultProducts();
+            console.log("ProductManagement: Setting default products.", defaultProds.length);
+            loadedProducts = defaultProds;
+            try {
+                localStorage.setItem("coffeeProducts", JSON.stringify(defaultProds));
+                console.log("ProductManagement: Saved default products to localStorage.");
+            } catch (lsError) {
+                console.error("ProductManagement: Failed to save default products to localStorage.", lsError);
+                toast({
+                    title: "Ошибка LocalStorage",
+                    description: "Не удалось сохранить начальные товары.",
+                    variant: "destructive",
+                });
+            }
+        }
+
+    } catch (lsError) {
+        console.error("ProductManagement: Error accessing localStorage. Using defaults.", lsError);
+        // Fallback in case of general localStorage access error
+        const defaultProds = getDefaultProducts();
+        console.log("ProductManagement: Setting default products due to localStorage access error.");
+        loadedProducts = defaultProds;
+         toast({
+            title: "Ошибка LocalStorage",
+            description: "Не удалось загрузить или сохранить товары. Используются значения по умолчанию.",
+            variant: "destructive",
+         });
     }
-   }, []);
+
+    // Set state *once* with either loaded or default products
+    setProducts(loadedProducts);
+    console.log("ProductManagement: setProducts called with:", loadedProducts.length, "products");
+
+   }, []); // Empty dependency array ensures this runs only once on mount
+
 
    // Persist products to localStorage whenever they change
    useEffect(() => {
-    if (isClient) {
+    // Only run this effect after the initial load and if products state is not empty
+    if (isClient && products.length > 0) {
+        console.log("ProductManagement: Persisting products to localStorage", products.length);
         try {
-            localStorage.setItem("coffeeProducts", JSON.stringify(products));
-            // Optionally trigger a storage event for other tabs (like OrderBuilder)
-            window.dispatchEvent(new StorageEvent('storage', {
-                key: 'coffeeProducts',
-                newValue: JSON.stringify(products),
-                oldValue: localStorage.getItem('coffeeProducts'), // May be slightly out of sync, but ok for this use case
-                storageArea: localStorage,
-            }));
+            const currentStoredValue = localStorage.getItem("coffeeProducts");
+            const newProductsJson = JSON.stringify(products);
+
+            // Only update localStorage if the value has actually changed
+            if (currentStoredValue !== newProductsJson) {
+                localStorage.setItem("coffeeProducts", newProductsJson);
+                console.log("ProductManagement: Products saved to localStorage.");
+                // Trigger a storage event for other tabs (like OrderBuilder)
+                window.dispatchEvent(new StorageEvent('storage', {
+                    key: 'coffeeProducts',
+                    newValue: newProductsJson,
+                    oldValue: currentStoredValue,
+                    storageArea: localStorage,
+                }));
+            }
         } catch (e) {
-            console.error("Failed to save products to localStorage", e);
+            console.error("ProductManagement: Failed to save products to localStorage", e);
              toast({
                title: "Ошибка сохранения",
                description: "Не удалось сохранить список товаров.",
                variant: "destructive",
              });
         }
-
     }
-   }, [products, isClient, toast]); // Added toast dependency
+   }, [products, isClient, toast]); // Rerun when products, isClient, or toast changes
 
 
   const onSubmit = (data: ProductFormData) => {
@@ -135,7 +181,8 @@ export function ProductManagement() {
       volume: data.volume || undefined, // Store as undefined if empty
       price: data.price,
       imageUrl: data.imageUrl || undefined, // Don't assign default here, do it in render
-      dataAiHint: data.dataAiHint || [data.name.toLowerCase(), data.volume?.replace(/[^0-9.,]/g, '')].filter(Boolean).slice(0, 2).join(' '), // Generate hint using name and numeric part of volume
+      // Generate hint using name and numeric part of volume, fallback to name if volume is empty
+      dataAiHint: data.dataAiHint || [data.name.toLowerCase(), data.volume?.replace(/[^0-9.,]/g, '')].filter(Boolean).slice(0, 2).join(' ') || data.name.toLowerCase(),
     };
 
     setProducts((prevProducts) => [...prevProducts, newProduct]);
@@ -153,7 +200,7 @@ export function ProductManagement() {
     toast({
       title: "Товар удален",
       description: "Товар был удален.",
-      variant: "destructive",
+      variant: "destructive", // Use destructive variant for deletion confirmation
     });
      // If removing the product being edited, cancel edit mode
     if (editingProductId === id) {
@@ -189,7 +236,8 @@ export function ProductManagement() {
               volume: data.volume || undefined,
               price: data.price,
               imageUrl: data.imageUrl || undefined, // Update or keep old image, store undefined if empty
-              dataAiHint: data.dataAiHint || p.dataAiHint || [data.name.toLowerCase(), data.volume?.replace(/[^0-9.,]/g, '')].filter(Boolean).slice(0, 2).join(' '), // Update hint
+               // Update hint, use existing if not provided, fallback to generated if all else fails
+              dataAiHint: data.dataAiHint || p.dataAiHint || [data.name.toLowerCase(), data.volume?.replace(/[^0-9.,]/g, '')].filter(Boolean).slice(0, 2).join(' ') || data.name.toLowerCase(),
             }
           : p
       )

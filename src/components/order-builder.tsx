@@ -24,32 +24,68 @@ export function OrderBuilder() {
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
+    // This effect runs only once on the client after hydration
     setIsClient(true);
-    const storedProducts = localStorage.getItem("coffeeProducts");
-    if (storedProducts) {
-      try {
-        const parsedProducts: Product[] = JSON.parse(storedProducts);
-        // Basic validation: check if it's an array and has items
-        if (Array.isArray(parsedProducts) && parsedProducts.length > 0) {
-           setProducts(parsedProducts);
-        } else {
-           console.warn("Stored products invalid or empty, falling back to defaults.");
-           const defaultProds = getDefaultProducts();
-           setProducts(defaultProds);
-           localStorage.setItem("coffeeProducts", JSON.stringify(defaultProds));
+    console.log("OrderBuilder: useEffect running, isClient=true");
+
+    let loadedProducts: Product[] | null = null; // Temp variable
+
+    try { // Wrap localStorage access
+      const storedProducts = localStorage.getItem("coffeeProducts");
+      console.log("OrderBuilder: storedProducts from localStorage:", storedProducts ? storedProducts.substring(0, 100) + '...' : null);
+
+      if (storedProducts) {
+        try {
+          const parsedProducts: any = JSON.parse(storedProducts);
+          // More robust validation
+          if (Array.isArray(parsedProducts) && parsedProducts.length > 0 && parsedProducts.every(p => p && typeof p.id === 'string' && typeof p.name === 'string' && typeof p.price === 'number')) {
+            console.log("OrderBuilder: Parsed valid products from localStorage.", parsedProducts.length);
+            loadedProducts = parsedProducts as Product[];
+          } else {
+            console.warn("OrderBuilder: Stored products invalid structure or empty, falling back to defaults.");
+             localStorage.removeItem("coffeeProducts"); // Clear invalid data
+          }
+        } catch (e) {
+          console.error("OrderBuilder: Failed to parse products from localStorage, falling back to defaults.", e);
+           localStorage.removeItem("coffeeProducts"); // Clear invalid data
         }
-      } catch (e) {
-        console.error("Failed to parse products from localStorage, falling back to defaults.", e);
-        const defaultProds = getDefaultProducts();
-        setProducts(defaultProds);
-        localStorage.setItem("coffeeProducts", JSON.stringify(defaultProds));
+      } else {
+        console.log("OrderBuilder: No products found in localStorage, using defaults.");
       }
-    } else {
-       // Add default products if none are found in local storage
-       const defaultProds = getDefaultProducts();
-       setProducts(defaultProds);
-       localStorage.setItem("coffeeProducts", JSON.stringify(defaultProds));
+
+      // If loadedProducts is still null, use defaults
+      if (loadedProducts === null) {
+        const defaultProds = getDefaultProducts();
+        console.log("OrderBuilder: Setting default products.", defaultProds.length);
+        loadedProducts = defaultProds;
+        try {
+            localStorage.setItem("coffeeProducts", JSON.stringify(defaultProds));
+            console.log("OrderBuilder: Saved default products to localStorage.");
+        } catch (lsError) {
+            console.error("OrderBuilder: Failed to save default products to localStorage.", lsError);
+             toast({
+                title: "Ошибка LocalStorage",
+                description: "Не удалось сохранить начальные товары.",
+                variant: "destructive",
+             });
+        }
+      }
+    } catch (lsError) {
+        console.error("OrderBuilder: Error accessing localStorage. Using defaults.", lsError);
+        const defaultProds = getDefaultProducts();
+        console.log("OrderBuilder: Setting default products due to localStorage access error.");
+        loadedProducts = defaultProds;
+         toast({
+            title: "Ошибка LocalStorage",
+            description: "Не удалось загрузить или сохранить товары. Используются значения по умолчанию.",
+            variant: "destructive",
+         });
     }
+
+    // Set state *once*
+    setProducts(loadedProducts);
+    console.log("OrderBuilder: setProducts called with:", loadedProducts.length, "products");
+
   }, []); // Run only once on mount
 
 
@@ -66,21 +102,29 @@ export function OrderBuilder() {
 
     const handleStorageChange = (event: StorageEvent) => {
       if (event.key === "coffeeProducts" && event.newValue) {
+         console.log("OrderBuilder: Detected storage change for coffeeProducts.");
         try {
           const updatedProducts = JSON.parse(event.newValue);
-          if (Array.isArray(updatedProducts)) {
+           // Validate the updated products
+          if (Array.isArray(updatedProducts) && updatedProducts.every(p => p && typeof p.id === 'string')) {
+             console.log("OrderBuilder: Applying updated products from storage event.", updatedProducts.length);
             setProducts(updatedProducts);
             // Also update items in the current order if their info changed
             setOrder(prevOrder => {
-                return prevOrder.map(orderItem => {
+                const updatedOrder = prevOrder.map(orderItem => {
                     const updatedProduct = updatedProducts.find(p => p.id === orderItem.id);
-                    // Keep quantity, update the rest
-                    return updatedProduct ? { ...updatedProduct, quantity: orderItem.quantity } : orderItem;
-                }).filter(item => updatedProducts.some(p => p.id === item.id)); // Remove items no longer in product list
+                    // Keep quantity, update the rest if product exists
+                    return updatedProduct ? { ...updatedProduct, quantity: orderItem.quantity } : null; // Mark for removal if product deleted
+                }).filter(item => item !== null) as OrderItem[]; // Filter out removed items
+
+                 console.log("OrderBuilder: Order updated based on storage change.", updatedOrder.length);
+                 return updatedOrder;
             });
+          } else {
+             console.warn("OrderBuilder: Invalid data received from storage event. Ignoring.");
           }
         } catch (e) {
-          console.error("Error updating products/order from localStorage change:", e);
+          console.error("OrderBuilder: Error processing storage event:", e);
         }
       }
     };
@@ -89,7 +133,7 @@ export function OrderBuilder() {
     return () => {
       window.removeEventListener('storage', handleStorageChange);
     };
-  }, [isClient]);
+  }, [isClient]); // Rerun only if isClient changes
 
 
   const addToOrder = (product: Product) => {
