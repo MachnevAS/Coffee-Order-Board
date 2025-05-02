@@ -489,10 +489,10 @@ export function OrderBuilder() {
                  className="rounded-t-lg h-[75vh] flex flex-col p-0"
                  aria-describedby={undefined} // Removed default aria-describedby
               >
-                  {/* Add a visually hidden title for accessibility - KEPT for now */}
-                  {/* <SheetHeader className="sr-only">
+                  {/* Add a visually hidden title for accessibility */}
+                  <SheetHeader className="sr-only">
                     <SheetTitle>Текущий заказ</SheetTitle>
-                  </SheetHeader> */}
+                  </SheetHeader>
                   {/* Now the visible title is part of OrderDetails */}
                   <OrderDetails isSheet={true} />
               </SheetContent>
