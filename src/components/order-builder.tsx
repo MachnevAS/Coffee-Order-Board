@@ -266,7 +266,7 @@ export function OrderBuilder() {
           </CardHeader>
 
           {/* CardContent now correctly enables ScrollArea to work within flex layout */}
-          <CardContent className={cn("p-0 flex-grow overflow-hidden", isSheet ? "px-3 md:px-4" : "px-4 pt-0")}> {/* Use px for side padding, pt-0 for desktop */}
+          <CardContent className={cn("p-0 flex-grow overflow-hidden min-h-0", isSheet ? "px-3 md:px-4" : "px-4 pt-0")}> {/* Use px for side padding, pt-0 for desktop, ADDED min-h-0 */}
               <ScrollArea className={cn(
                 "h-full", // Let ScrollArea take full height of its container (CardContent)
                 !isSheet && "pr-2" // Add padding-right for scrollbar only on desktop
@@ -493,3 +493,4 @@ export function OrderBuilder() {
     </div>
   );
 }
+
