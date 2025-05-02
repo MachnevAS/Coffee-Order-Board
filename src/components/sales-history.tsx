@@ -56,7 +56,7 @@ import {
 } from "@/components/ui/tooltip"; // Import Tooltip components
 
 
-type SortKey = 'timestamp' | 'totalPrice';
+type SortKey = 'timestamp' | 'totalPrice' | 'paymentMethod'; // Added 'paymentMethod'
 type SortDirection = 'asc' | 'desc';
 type SortConfig = { key: SortKey; direction: SortDirection }; // Explicit type
 const SORT_STORAGE_KEY = 'salesHistorySortConfig'; // Key for localStorage
@@ -100,7 +100,7 @@ export function SalesHistory() {
             try {
                 const parsedSortConfig: SortConfig = JSON.parse(storedSortConfig);
                 // Validate parsed config
-                if (parsedSortConfig && (parsedSortConfig.key === 'timestamp' || parsedSortConfig.key === 'totalPrice') && (parsedSortConfig.direction === 'asc' || parsedSortConfig.direction === 'desc')) {
+                if (parsedSortConfig && ['timestamp', 'totalPrice', 'paymentMethod'].includes(parsedSortConfig.key) && (parsedSortConfig.direction === 'asc' || parsedSortConfig.direction === 'desc')) { // Added paymentMethod check
                     setSortConfig(parsedSortConfig);
                     console.log("SalesHistory: Loaded sort config from localStorage:", parsedSortConfig);
                 } else {
@@ -232,21 +232,29 @@ export function SalesHistory() {
       // 2. Sort based on sortConfig
       if (sortConfig) {
           filtered.sort((a, b) => {
-              let aValue: string | number = a[sortConfig.key];
-              let bValue: string | number = b[sortConfig.key];
+              let aValue: string | number | undefined = a[sortConfig.key as keyof Order]; // Use keyof Order
+              let bValue: string | number | undefined = b[sortConfig.key as keyof Order]; // Use keyof Order
 
               // Handle date sorting
               if (sortConfig.key === 'timestamp') {
                   aValue = parseISO(a.timestamp).getTime();
                   bValue = parseISO(b.timestamp).getTime();
               }
+              // Handle string sorting (Payment Method)
+              else if (sortConfig.key === 'paymentMethod') {
+                  aValue = a.paymentMethod || ''; // Fallback for undefined
+                  bValue = b.paymentMethod || ''; // Fallback for undefined
+                  const comparison = (aValue as string).localeCompare(bValue as string, ru.code); // Use locale compare
+                  return sortConfig.direction === 'asc' ? comparison : -comparison;
+              }
+              // Handle numeric sorting (Total Price)
+              else if (typeof aValue === 'number' && typeof bValue === 'number') {
+                 if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+                 if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+                 return 0;
+              }
 
-              if (aValue < bValue) {
-                  return sortConfig.direction === 'asc' ? -1 : 1;
-              }
-              if (aValue > bValue) {
-                  return sortConfig.direction === 'asc' ? 1 : -1;
-              }
+              // Fallback for unexpected types or equality
               return 0;
           });
       } else {
@@ -469,7 +477,11 @@ export function SalesHistory() {
                     </div>
                  </TableHead>
                  <TableHead className="text-xs md:text-sm px-2 md:px-4">Товары</TableHead>
-                 <TableHead className="w-[90px] md:w-[110px] text-xs md:text-sm px-2 md:px-4">Оплата</TableHead> {/* Added Payment Method Header */}
+                 <TableHead className="w-[90px] md:w-[110px] text-xs md:text-sm px-2 md:px-4 cursor-pointer hover:bg-muted/50" onClick={() => requestSort('paymentMethod')}> {/* Added onClick for paymentMethod */}
+                     <div className="flex items-center"> {/* Added wrapper div */}
+                       Оплата {getSortIcon('paymentMethod')} {/* Added icon */}
+                     </div>
+                 </TableHead>
                  <TableHead className="text-right w-[80px] md:w-[100px] text-xs md:text-sm px-2 md:px-4 cursor-pointer hover:bg-muted/50" onClick={() => requestSort('totalPrice')}>
                     <div className="flex items-center justify-end">
                       Итого {getSortIcon('totalPrice')}
@@ -551,4 +563,5 @@ export function SalesHistory() {
     </Card>
   );
 }
+
 
