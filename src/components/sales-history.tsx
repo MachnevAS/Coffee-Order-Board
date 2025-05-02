@@ -58,12 +58,13 @@ import {
 
 type SortKey = 'timestamp' | 'totalPrice';
 type SortDirection = 'asc' | 'desc';
-
+type SortConfig = { key: SortKey; direction: SortDirection }; // Explicit type
+const SORT_STORAGE_KEY = 'salesHistorySortConfig'; // Key for localStorage
 
 export function SalesHistory() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
-  const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection } | null>(null);
+  const [sortConfig, setSortConfig] = useState<SortConfig | null>(null); // Use SortConfig type
   const [isClient, setIsClient] = useState(false);
   const [isClearHistoryDialogOpen, setIsClearHistoryDialogOpen] = useState(false); // State for clear history dialog
   const { toast } = useToast(); // Initialize toast
@@ -71,6 +72,7 @@ export function SalesHistory() {
   useEffect(() => {
     setIsClient(true);
     try {
+        // Load orders
         const storedOrders = localStorage.getItem('coffeeOrders');
         if (storedOrders) {
             try {
@@ -91,30 +93,83 @@ export function SalesHistory() {
         } else {
             setOrders([]); // Set to empty array if no orders found
         }
+
+         // Load sort config
+         const storedSortConfig = localStorage.getItem(SORT_STORAGE_KEY);
+         if (storedSortConfig) {
+            try {
+                const parsedSortConfig: SortConfig = JSON.parse(storedSortConfig);
+                // Validate parsed config
+                if (parsedSortConfig && (parsedSortConfig.key === 'timestamp' || parsedSortConfig.key === 'totalPrice') && (parsedSortConfig.direction === 'asc' || parsedSortConfig.direction === 'desc')) {
+                    setSortConfig(parsedSortConfig);
+                    console.log("SalesHistory: Loaded sort config from localStorage:", parsedSortConfig);
+                } else {
+                    console.warn("SalesHistory: Invalid sort config found in localStorage, using default.");
+                    setSortConfig(null); // Default to null (newest first)
+                }
+            } catch (e) {
+                 console.error("SalesHistory: Failed to parse sort config from localStorage.", e);
+                 setSortConfig(null); // Default to null on error
+            }
+         } else {
+              console.log("SalesHistory: No sort config found in localStorage, using default.");
+              setSortConfig(null); // Default to null (newest first)
+         }
+
     } catch (lsError) {
-         console.error("Error accessing localStorage for orders:", lsError);
+         console.error("Error accessing localStorage for initial load:", lsError);
          setOrders([]); // Initialize as empty on localStorage access error
+         setSortConfig(null); // Default sort config
          toast({
             title: "Ошибка LocalStorage",
-            description: "Не удалось загрузить историю заказов.",
+            description: "Не удалось загрузить данные. Настройки могут быть сброшены.",
             variant: "destructive",
          });
     }
+
+    // Listener for storage changes (specifically coffeeOrders)
+     const handleStorageChange = (event: StorageEvent) => {
+        if (event.key === 'coffeeOrders') {
+            console.log("SalesHistory: Detected storage change for coffeeOrders.");
+            let updatedOrders: Order[] = [];
+            try {
+                 if (event.newValue) {
+                     const parsed = JSON.parse(event.newValue);
+                     if (Array.isArray(parsed) && parsed.every(o => typeof o.id === 'string' && typeof o.timestamp === 'string')) {
+                         updatedOrders = parsed;
+                         console.log("SalesHistory: Applying updated orders from storage event.", updatedOrders.length);
+                     } else {
+                         console.warn("SalesHistory: Invalid order data received from storage event.");
+                     }
+                 } else {
+                      console.log("SalesHistory: coffeeOrders cleared in storage.");
+                 }
+            } catch (e) {
+                console.error("SalesHistory: Error processing order storage event:", e);
+            }
+            setOrders(updatedOrders); // Always update state, even if empty
+        }
+     };
+
+     window.addEventListener('storage', handleStorageChange);
+     return () => {
+         window.removeEventListener('storage', handleStorageChange);
+     };
+
   }, [toast]); // Added toast dependency
 
 
    // Persist orders to localStorage whenever they change (including deletions)
    useEffect(() => {
        if (isClient) {
-           console.log("SalesHistory: Persisting orders to localStorage", orders.length);
+           // console.log("SalesHistory: Persisting orders to localStorage", orders.length); // Less verbose logging
            try {
                const currentStoredValue = localStorage.getItem("coffeeOrders");
                const newOrdersJson = JSON.stringify(orders); // Stringify current state (could be empty)
 
                if (currentStoredValue !== newOrdersJson) {
                    localStorage.setItem("coffeeOrders", newOrdersJson);
-                   console.log("SalesHistory: Orders saved to localStorage.");
-                   // Dispatch event to notify other components if needed
+                   // Dispatch event only if value actually changed
                    window.dispatchEvent(new StorageEvent('storage', {
                        key: 'coffeeOrders',
                        newValue: newOrdersJson,
@@ -132,6 +187,27 @@ export function SalesHistory() {
            }
        }
    }, [orders, isClient, toast]); // Add toast dependency
+
+
+    // Persist sortConfig to localStorage whenever it changes
+    useEffect(() => {
+        if (isClient && sortConfig) {
+             console.log("SalesHistory: Saving sort config to localStorage", sortConfig);
+             try {
+                 localStorage.setItem(SORT_STORAGE_KEY, JSON.stringify(sortConfig));
+             } catch (e) {
+                 console.error("SalesHistory: Failed to save sort config to localStorage", e);
+             }
+        } else if (isClient && sortConfig === null) {
+             // Optionally remove the key if sortConfig is reset to null
+             try {
+                  localStorage.removeItem(SORT_STORAGE_KEY);
+                  console.log("SalesHistory: Removed sort config from localStorage.");
+             } catch (e) {
+                  console.error("SalesHistory: Failed to remove sort config from localStorage", e);
+             }
+        }
+    }, [sortConfig, isClient]);
 
 
    const filteredAndSortedOrders = useMemo(() => {
@@ -245,14 +321,19 @@ export function SalesHistory() {
 
    const requestSort = (key: SortKey) => {
        let direction: SortDirection = 'asc';
+       let newSortConfig: SortConfig | null = null; // Initialize as null
+
        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
            direction = 'desc';
+           newSortConfig = { key, direction };
        } else if (sortConfig && sortConfig.key === key && sortConfig.direction === 'desc') {
-            // Optional: Third click resets sorting or cycles back to asc
-            setSortConfig(null); // Reset sorting
-            return;
+            // Third click resets sorting to null (default: newest first)
+            newSortConfig = null;
+       } else {
+            // First click on a new column or first click ever
+            newSortConfig = { key, direction };
        }
-       setSortConfig({ key, direction });
+       setSortConfig(newSortConfig); // Update state with the new config (or null)
    };
 
    const getSortIcon = (key: SortKey) => {

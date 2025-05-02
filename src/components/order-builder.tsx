@@ -40,7 +40,7 @@ interface OrderItem extends Product {
 }
 
 type SortOption = 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc' | 'popularity-desc'; // Removed 'default', name-asc is now the implicit default
-
+const SORT_STORAGE_KEY = 'orderBuilderSortOption'; // Key for localStorage
 
 export function OrderBuilder() {
   // --- All Hooks called unconditionally at the top ---
@@ -50,6 +50,7 @@ export function OrderBuilder() {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>(""); // State for search term
   const [sortOption, setSortOption] = useState<SortOption>('name-asc'); // State for sorting, default to 'name-asc'
+  const [popularityVersion, setPopularityVersion] = useState<number>(0); // State to trigger popularity recalculation
   const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
   const [isSheetOpen, setIsSheetOpen] = useState(false); // State for mobile sheet
@@ -57,7 +58,7 @@ export function OrderBuilder() {
   const orderCardTitleId = React.useId(); // Generate a unique ID for card title
 
 
-  // Effect to set isClient and load initial products
+  // Effect to set isClient and load initial data (products, sort option)
   useEffect(() => {
     setIsClient(true);
     console.log("OrderBuilder: useEffect running, isClient=true");
@@ -65,6 +66,7 @@ export function OrderBuilder() {
     let loadedProducts: Product[] = []; // Initialize as empty array
 
     try {
+      // Load products
       const storedProducts = localStorage.getItem("coffeeProducts");
       console.log("OrderBuilder: storedProducts from localStorage:", storedProducts ? storedProducts.substring(0, 100) + '...' : null);
 
@@ -88,12 +90,23 @@ export function OrderBuilder() {
         console.log("OrderBuilder: No products found in localStorage, initializing as empty.");
         // loadedProducts remains empty array
       }
+
+      // Load sort option
+      const storedSortOption = localStorage.getItem(SORT_STORAGE_KEY);
+      if (storedSortOption && ['name-asc', 'name-desc', 'price-asc', 'price-desc', 'popularity-desc'].includes(storedSortOption)) {
+        setSortOption(storedSortOption as SortOption);
+        console.log("OrderBuilder: Loaded sort option from localStorage:", storedSortOption);
+      } else {
+         console.log("OrderBuilder: No valid sort option found in localStorage, using default.");
+         // Keep default 'name-asc'
+      }
+
     } catch (lsError) {
         console.error("OrderBuilder: Error accessing localStorage. Initializing as empty.", lsError);
         // loadedProducts remains empty array
          toast({
             title: "Ошибка LocalStorage",
-            description: "Не удалось загрузить товары. Список будет пустым.",
+            description: "Не удалось загрузить данные. Настройки могут быть сброшены.",
             variant: "destructive",
          });
     }
@@ -153,18 +166,39 @@ export function OrderBuilder() {
              return updatedOrder;
         });
       }
+      // Listen for order changes to potentially refresh popularity
+      if (event.key === "coffeeOrders" && sortOption === 'popularity-desc') {
+         console.log("OrderBuilder: Detected order change, refreshing popularity sort.");
+         setPopularityVersion(v => v + 1); // Trigger recalculation
+      }
     };
 
     window.addEventListener('storage', handleStorageChange);
     return () => {
       window.removeEventListener('storage', handleStorageChange);
     };
-  }, [isClient]); // Rerun only if isClient changes
+  }, [isClient, sortOption]); // Rerun if isClient or sortOption changes
+
+
+  // Function to update sort option and save to localStorage
+  const handleSetSortOption = (newSortOption: SortOption) => {
+    setSortOption(newSortOption);
+    if (isClient) {
+      try {
+        localStorage.setItem(SORT_STORAGE_KEY, newSortOption);
+        console.log("OrderBuilder: Saved sort option to localStorage:", newSortOption);
+      } catch (e) {
+        console.error("OrderBuilder: Failed to save sort option to localStorage.", e);
+      }
+    }
+  };
+
 
   // Memoize filtered and sorted products
   const filteredAndSortedProducts = useMemo(() => {
     if (!isClient) return []; // Return empty array on server
 
+    console.log("OrderBuilder: Recalculating filtered/sorted products. PopularityVersion:", popularityVersion); // Log recalculation
     let result = [...products]; // Create a copy to avoid mutating original state
 
     // 1. Filter by search term
@@ -190,6 +224,7 @@ export function OrderBuilder() {
         result.sort((a, b) => b.price - a.price);
         break;
       case 'popularity-desc': {
+        console.log("OrderBuilder: Sorting by popularity.");
         const popularityMap = new Map<string, number>();
         try {
           const storedOrders = localStorage.getItem('coffeeOrders');
@@ -201,6 +236,7 @@ export function OrderBuilder() {
                   popularityMap.set(item.id, (popularityMap.get(item.id) || 0) + item.quantity);
                 });
               });
+               console.log("OrderBuilder: Popularity map calculated:", Object.fromEntries(popularityMap));
             }
           }
         } catch (e) {
@@ -217,7 +253,7 @@ export function OrderBuilder() {
     }
 
     return result;
-  }, [products, searchTerm, sortOption, isClient]); // Added isClient dependency
+  }, [products, searchTerm, sortOption, isClient, popularityVersion]); // Added popularityVersion dependency
 
 
   // Memoize order quantities for quick lookup in ProductCard
@@ -313,6 +349,19 @@ export function OrderBuilder() {
       const pastOrders: Order[] = JSON.parse(localStorage.getItem("coffeeOrders") || "[]");
       pastOrders.push(orderData);
       localStorage.setItem("coffeeOrders", JSON.stringify(pastOrders));
+
+      // Dispatch storage event to notify other components (like SalesHistory and itself for popularity update)
+      window.dispatchEvent(new StorageEvent('storage', {
+          key: 'coffeeOrders',
+          newValue: JSON.stringify(pastOrders),
+          storageArea: localStorage,
+      }));
+
+      // If sorting by popularity, trigger a recalculation
+      if (sortOption === 'popularity-desc') {
+          setPopularityVersion(v => v + 1);
+      }
+
 
       toast({
         title: "Заказ оформлен!",
@@ -536,23 +585,23 @@ export function OrderBuilder() {
               <DropdownMenuContent align="end">
                  <DropdownMenuLabel>Сортировать по</DropdownMenuLabel>
                  <DropdownMenuSeparator />
-                 <DropdownMenuItem onSelect={() => setSortOption('name-asc')} className={cn(sortOption === 'name-asc' && 'bg-accent')}>
+                 <DropdownMenuItem onSelect={() => handleSetSortOption('name-asc')} className={cn(sortOption === 'name-asc' && 'bg-accent text-accent-foreground')}>
                     <ArrowDownAZ className="mr-2 h-4 w-4" />
                     <span>Названию (А-Я)</span>
                  </DropdownMenuItem>
-                 <DropdownMenuItem onSelect={() => setSortOption('name-desc')} className={cn(sortOption === 'name-desc' && 'bg-accent')}>
+                 <DropdownMenuItem onSelect={() => handleSetSortOption('name-desc')} className={cn(sortOption === 'name-desc' && 'bg-accent text-accent-foreground')}>
                      <ArrowDownZA className="mr-2 h-4 w-4" />
                      <span>Названию (Я-А)</span>
                  </DropdownMenuItem>
-                 <DropdownMenuItem onSelect={() => setSortOption('price-asc')} className={cn(sortOption === 'price-asc' && 'bg-accent')}>
+                 <DropdownMenuItem onSelect={() => handleSetSortOption('price-asc')} className={cn(sortOption === 'price-asc' && 'bg-accent text-accent-foreground')}>
                      <ArrowDown01 className="mr-2 h-4 w-4" />
                      <span>Цене (возрастание)</span>
                  </DropdownMenuItem>
-                 <DropdownMenuItem onSelect={() => setSortOption('price-desc')} className={cn(sortOption === 'price-desc' && 'bg-accent')}>
+                 <DropdownMenuItem onSelect={() => handleSetSortOption('price-desc')} className={cn(sortOption === 'price-desc' && 'bg-accent text-accent-foreground')}>
                      <ArrowDown10 className="mr-2 h-4 w-4" />
                      <span>Цене (убывание)</span>
                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => setSortOption('popularity-desc')} className={cn(sortOption === 'popularity-desc' && 'bg-accent')}>
+                  <DropdownMenuItem onSelect={() => handleSetSortOption('popularity-desc')} className={cn(sortOption === 'popularity-desc' && 'bg-accent text-accent-foreground')}>
                       <TrendingUp className="mr-2 h-4 w-4" />
                       <span>Популярности (сначала топ)</span>
                   </DropdownMenuItem>
@@ -620,6 +669,7 @@ export function OrderBuilder() {
          <Card className="shadow-md lg:sticky lg:top-4 md:top-8 max-h-[calc(100vh-4rem)] flex flex-col">
             <VisuallyHidden>
                  {/* Title is now rendered inside OrderDetails for better accessibility structure */}
+                 <SheetTitle id={orderCardTitleId}>Текущий заказ (Десктоп)</SheetTitle> {/* Added hidden title for accessibility */}
             </VisuallyHidden>
            <OrderDetails />
          </Card>
@@ -628,4 +678,5 @@ export function OrderBuilder() {
     </div>
   );
 }
+
 
