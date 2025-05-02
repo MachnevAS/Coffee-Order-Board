@@ -39,7 +39,7 @@ interface OrderItem extends Product {
   quantity: number;
 }
 
-type SortOption = 'default' | 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc' | 'popularity-desc'; // Added popularity sort
+type SortOption = 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc' | 'popularity-desc'; // Removed 'default', name-asc is now the implicit default
 
 
 export function OrderBuilder() {
@@ -49,7 +49,7 @@ export function OrderBuilder() {
   const [totalPrice, setTotalPrice] = useState<number>(0);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>(""); // State for search term
-  const [sortOption, setSortOption] = useState<SortOption>('default'); // State for sorting
+  const [sortOption, setSortOption] = useState<SortOption>('name-asc'); // State for sorting, default to 'name-asc'
   const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
   const [isSheetOpen, setIsSheetOpen] = useState(false); // State for mobile sheet
@@ -210,11 +210,9 @@ export function OrderBuilder() {
         result.sort((a, b) => (popularityMap.get(b.id) || 0) - (popularityMap.get(a.id) || 0));
         break;
       }
-      case 'default':
-      default:
-        // No sorting applied, maintain original order (after filtering)
-        // Or apply a default sort if desired, e.g., by name:
-        // result.sort((a, b) => a.name.localeCompare(b.name));
+      default: // Should technically not happen with the new SortOption type, but good practice
+         // Fallback to name-asc if something goes wrong or state is invalid
+        result.sort((a, b) => a.name.localeCompare(b.name));
         break;
     }
 
@@ -335,59 +333,49 @@ export function OrderBuilder() {
   // --- Sub-component for Order Details ---
   const OrderDetails = ({ isSheet = false }: { isSheet?: boolean }) => (
     <>
-      {/* Header with Title */}
-      <CardHeader className={cn(
-         "p-3 md:p-4 flex-shrink-0",
-         isSheet ? "pb-2 border-b" : "pb-3" // Add border bottom only for sheet header
+       {/* Header with Title (conditionally rendered inside SheetContent or Card) */}
+       {isSheet && (
+          <SheetHeader className="p-3 md:p-4 border-b text-left">
+              <SheetTitle id={orderSheetTitleId}>Текущий заказ</SheetTitle>
+          </SheetHeader>
        )}
-       // Provide accessible name based on context
-       aria-labelledby={isSheet ? orderSheetTitleId : orderCardTitleId}
-      >
-          <div className={cn(
-             "flex items-center justify-between",
-             isSheet ? "text-lg" : "text-xl" // Adjust title size for sheet
-          )}>
-              {/* Render title appropriately */}
-              {/* The visible title is used for accessibility */}
-              {isSheet ? (
-                  <SheetTitle id={orderSheetTitleId} className="text-lg">Текущий заказ</SheetTitle>
-              ) : (
-                  <CardTitle id={orderCardTitleId} className="text-xl">Текущий заказ</CardTitle>
-              )}
-          </div>
-      </CardHeader>
+       {!isSheet && (
+          <CardHeader
+              className="p-3 md:p-4 pb-3"
+              aria-labelledby={orderCardTitleId}
+          >
+              <CardTitle id={orderCardTitleId} className="text-xl">Текущий заказ</CardTitle>
+          </CardHeader>
+        )}
 
-      {/* CardContent now correctly enables ScrollArea to work within flex layout */}
+      {/* Content Area with Scroll */}
        <CardContent className={cn(
-          "p-0 flex-grow overflow-hidden min-h-0", // Ensure CardContent can shrink and grow
-          isSheet ? "px-3 md:px-4" : "px-4 pt-0" // Use px for side padding, pt-0 for desktop, overflow-hidden
+          "p-0 flex-grow overflow-hidden min-h-0",
+          isSheet ? "px-3 md:px-4" : "px-4 pt-0"
       )}>
-          <ScrollArea className={cn(
-             "h-full pr-2" // Let ScrollArea take full height of its container (CardContent), add padding-right for scrollbar
-          )}>
+          <ScrollArea className="h-full pr-2">
              {order.length === 0 ? (
               <p className="text-muted-foreground text-center py-3 md:py-4 text-sm">Ваш заказ пуст.</p>
              ) : (
-               <ul className="space-y-1 md:space-y-1.5 pt-1 pb-2 md:pb-3"> {/* Reduced space-y, Add padding top/bottom inside scroll area */}
+               <ul className="space-y-1 md:space-y-1.5 pt-1 pb-2 md:pb-3">
                 {order.map((item, index) => (
                    <li
                      key={item.id}
                      className={cn(
-                        "flex justify-between items-center text-sm gap-2 py-1 px-1 rounded-sm", // Added px and rounded
-                         // Add alternating background based on index
+                        "flex justify-between items-center text-sm gap-2 py-1 px-1 rounded-sm",
                          (index % 2 !== 0 ? 'bg-muted/50' : 'bg-card')
                      )}
                    >
-                     <div className="flex-grow overflow-hidden mr-1"> {/* Allow name to take space, add margin */}
+                     <div className="flex-grow overflow-hidden mr-1">
                        <span className="font-medium block truncate">{item.name} {item.volume && <span className="text-xs text-muted-foreground">({item.volume})</span>}</span>
                         <span className="font-mono text-xs md:text-sm whitespace-nowrap">{(item.price * item.quantity).toFixed(0)} ₽</span>
                      </div>
-                     <div className="flex items-center gap-1 md:gap-1 flex-shrink-0"> {/* Reduced desktop gap */}
+                     <div className="flex items-center gap-1 md:gap-1 flex-shrink-0">
                         <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7" onClick={() => removeFromOrder(item.id)}>
                           <MinusCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
                           <span className="sr-only">Убрать 1 {item.name}</span>
                        </Button>
-                        <Badge variant="secondary" className="px-1.5 py-0.5 text-xs md:text-sm font-medium min-w-[24px] justify-center"> {/* Quantity display */}
+                        <Badge variant="secondary" className="px-1.5 py-0.5 text-xs md:text-sm font-medium min-w-[24px] justify-center">
                            {item.quantity}
                         </Badge>
                         <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7" onClick={() => addToOrder(item)}>
@@ -406,12 +394,11 @@ export function OrderBuilder() {
           </ScrollArea>
       </CardContent>
 
-      {/* CardFooter remains at the bottom */}
+      {/* Footer */}
        <CardFooter className={cn(
            "flex flex-col gap-2 md:gap-3 p-3 md:p-4 pt-0 flex-shrink-0",
            isSheet ? "border-t pt-3" : "pt-2"
-           )}> {/* Keep flex-shrink-0 */}
-           {/* Separator only for Desktop */}
+           )}>
            {!isSheet && order.length > 0 && <Separator className="mb-3" />}
 
           {order.length > 0 ? (
@@ -431,14 +418,14 @@ export function OrderBuilder() {
                          variant={selectedPaymentMethod === method ? "default" : "outline"}
                          onClick={() => setSelectedPaymentMethod(method)}
                          className={cn(
-                             "h-auto min-h-[48px] text-xs flex-col items-center justify-center px-1 py-1 leading-tight", // Adjusted py
+                             "h-auto min-h-[48px] text-xs flex-col items-center justify-center px-1 py-1 leading-tight",
                              selectedPaymentMethod === method ? 'bg-accent hover:bg-accent/90 text-accent-foreground' : ''
                          )}
                          size="sm"
                         >
-                          {method === 'Наличные' && <Banknote className="h-3.5 w-3.5 md:h-4 md:w-4 mb-0.5" />} {/* Reduced mb */}
-                          {method === 'Карта' && <CreditCard className="h-3.5 w-3.5 md:h-4 md:w-4 mb-0.5" />} {/* Reduced mb */}
-                          {method === 'Перевод' && <Smartphone className="h-3.5 w-3.5 md:h-4 md:w-4 mb-0.5" />} {/* Reduced mb */}
+                          {method === 'Наличные' && <Banknote className="h-3.5 w-3.5 md:h-4 md:w-4 mb-0.5" />}
+                          {method === 'Карта' && <CreditCard className="h-3.5 w-3.5 md:h-4 md:w-4 mb-0.5" />}
+                          {method === 'Перевод' && <Smartphone className="h-3.5 w-3.5 md:h-4 md:w-4 mb-0.5" />}
                           <span className="text-center block">{method}</span>
                         </Button>
                      ))}
@@ -569,12 +556,6 @@ export function OrderBuilder() {
                       <TrendingUp className="mr-2 h-4 w-4" />
                       <span>Популярности (сначала топ)</span>
                   </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onSelect={() => setSortOption('default')} className={cn(sortOption === 'default' && 'bg-accent')}>
-                      {/* Placeholder for a potential default icon */}
-                      <span className="mr-2 h-4 w-4"></span>
-                      <span>По умолчанию</span>
-                  </DropdownMenuItem>
               </DropdownMenuContent>
            </DropdownMenu>
          </div>
@@ -626,9 +607,6 @@ export function OrderBuilder() {
                  className="rounded-t-lg h-[75vh] flex flex-col p-0"
                  aria-labelledby={orderSheetTitleId} // Use the unique ID for aria-labelledby
               >
-                  <VisuallyHidden>
-                      <SheetTitle id={orderSheetTitleId}>Текущий заказ</SheetTitle>
-                  </VisuallyHidden>
                   {/* OrderDetails now renders its own header and title */}
                   <OrderDetails isSheet={true} />
               </SheetContent>
@@ -641,7 +619,7 @@ export function OrderBuilder() {
          {/* Made Card sticky and flex column, set max-height */}
          <Card className="shadow-md lg:sticky lg:top-4 md:top-8 max-h-[calc(100vh-4rem)] flex flex-col">
             <VisuallyHidden>
-                 <CardTitle id={orderCardTitleId}>Текущий заказ</CardTitle>
+                 {/* Title is now rendered inside OrderDetails for better accessibility structure */}
             </VisuallyHidden>
            <OrderDetails />
          </Card>

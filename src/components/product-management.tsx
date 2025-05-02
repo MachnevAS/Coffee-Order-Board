@@ -61,13 +61,13 @@ const productSchema = z.object({
 });
 
 type ProductFormData = z.infer<typeof productSchema>;
-type SortOption = 'default' | 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc' | 'popularity-desc'; // Added sort type
+type SortOption = 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc' | 'popularity-desc'; // Removed 'default', name-asc is now the implicit default
 
 
 export function ProductManagement() {
   const [products, setProducts] = useState<Product[]>([]);
   const [searchTerm, setSearchTerm] = useState<string>(""); // State for search term
-  const [sortOption, setSortOption] = useState<SortOption>('default'); // State for sorting
+  const [sortOption, setSortOption] = useState<SortOption>('name-asc'); // State for sorting, default to 'name-asc'
   const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
@@ -231,10 +231,9 @@ export function ProductManagement() {
         result.sort((a, b) => (popularityMap.get(b.id) || 0) - (popularityMap.get(a.id) || 0));
         break;
        }
-       case 'default':
-       default:
-         // No sorting applied, maintain original order (after filtering)
-         // Or apply a default sort if desired
+       default: // Should technically not happen with the new SortOption type
+          // Fallback to name-asc if something goes wrong or state is invalid
+         result.sort((a, b) => a.name.localeCompare(b.name));
          break;
      }
 
@@ -554,11 +553,6 @@ export function ProductManagement() {
                             <TrendingUp className="mr-2 h-4 w-4" />
                             <span>Популярности (сначала топ)</span>
                         </DropdownMenuItem>
-                       <DropdownMenuSeparator />
-                       <DropdownMenuItem onSelect={() => setSortOption('default')} className={cn(sortOption === 'default' && 'bg-accent')}>
-                           <span className="mr-2 h-4 w-4"></span>
-                           <span>По умолчанию</span>
-                       </DropdownMenuItem>
                    </DropdownMenuContent>
                 </DropdownMenu>
             </div>
