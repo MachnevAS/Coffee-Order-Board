@@ -285,9 +285,16 @@ export function OrderBuilder() {
                  {order.length === 0 ? (
                   <p className="text-muted-foreground text-center py-3 md:py-4 text-sm">Ваш заказ пуст.</p>
                  ) : (
-                   <ul className="space-y-2 md:space-y-3 pt-1 pb-2 md:pb-3"> {/* Add padding top/bottom inside scroll area */}
-                    {order.map((item) => (
-                       <li key={item.id} className="flex justify-between items-center text-sm gap-2 py-1"> {/* Added py-1 */}
+                   <ul className="space-y-1 md:space-y-1.5 pt-1 pb-2 md:pb-3"> {/* Reduced space-y, Add padding top/bottom inside scroll area */}
+                    {order.map((item, index) => (
+                       <li
+                         key={item.id}
+                         className={cn(
+                            "flex justify-between items-center text-sm gap-2 py-1 px-1 rounded-sm", // Added px and rounded
+                             // Add alternating background only in desktop view
+                             !isSheet && (index % 2 !== 0 ? 'bg-muted/50' : 'bg-card')
+                         )}
+                       >
                          <div className="flex-grow overflow-hidden mr-1"> {/* Allow name to take space, add margin */}
                            <span className="font-medium block truncate">{item.name} {item.volume && <span className="text-xs text-muted-foreground">({item.volume})</span>}</span>
                             <span className="font-mono text-xs md:text-sm whitespace-nowrap">{(item.price * item.quantity).toFixed(0)} ₽</span>
@@ -512,4 +519,3 @@ export function OrderBuilder() {
     </div>
   );
 }
-
