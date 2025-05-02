@@ -2,15 +2,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { OrderBuilder } from "@/components/order-builder";
 import { ProductManagement } from "@/components/product-management";
 import { SalesHistory } from "@/components/sales-history"; // Import the new component
-import { Coffee } from "lucide-react";
+import { Coffee } from "lucide-react"; // Ensure Coffee icon is imported
 
 export default function Home() {
   return (
     <main className="container mx-auto p-4 md:p-8">
       <header className="flex items-center justify-center mb-8">
-        <Coffee className="h-8 w-8 mr-2 text-primary" />
-        <h1 className="text-3xl font-bold text-center text-primary">
-          Доска заказов кофе
+        <Coffee className="h-6 w-6 sm:h-8 sm:w-8 mr-2 text-primary" /> {/* Coffee icon already present, adjusted size */}
+        <h1 className="text-2xl sm:text-3xl font-bold text-center text-primary whitespace-nowrap"> {/* Changed text, adjusted responsive size, added nowrap */}
+          Дневник секретиков баристы
         </h1>
       </header>
       <Tabs defaultValue="order">
