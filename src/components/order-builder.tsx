@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { Product } from "@/types/product";
 import { MinusCircle, PlusCircle, ShoppingCart, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { getDefaultProducts } from "@/lib/product-defaults"; // Import defaults
+// Removed import of getDefaultProducts
 
 interface OrderItem extends Product {
   quantity: number;
@@ -24,65 +24,45 @@ export function OrderBuilder() {
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
-    // This effect runs only once on the client after hydration
     setIsClient(true);
     console.log("OrderBuilder: useEffect running, isClient=true");
 
-    let loadedProducts: Product[] | null = null; // Temp variable
+    let loadedProducts: Product[] = []; // Initialize as empty array
 
-    try { // Wrap localStorage access
+    try {
       const storedProducts = localStorage.getItem("coffeeProducts");
       console.log("OrderBuilder: storedProducts from localStorage:", storedProducts ? storedProducts.substring(0, 100) + '...' : null);
 
       if (storedProducts) {
         try {
           const parsedProducts: any = JSON.parse(storedProducts);
-          // More robust validation
-          if (Array.isArray(parsedProducts) && parsedProducts.length > 0 && parsedProducts.every(p => p && typeof p.id === 'string' && typeof p.name === 'string' && typeof p.price === 'number')) {
+          if (Array.isArray(parsedProducts) && parsedProducts.every(p => p && typeof p.id === 'string' && typeof p.name === 'string' && typeof p.price === 'number')) {
             console.log("OrderBuilder: Parsed valid products from localStorage.", parsedProducts.length);
             loadedProducts = parsedProducts as Product[];
           } else {
-            console.warn("OrderBuilder: Stored products invalid structure or empty, falling back to defaults.");
+            console.warn("OrderBuilder: Stored products invalid structure or empty, initializing as empty.");
              localStorage.removeItem("coffeeProducts"); // Clear invalid data
+             // loadedProducts remains empty array
           }
         } catch (e) {
-          console.error("OrderBuilder: Failed to parse products from localStorage, falling back to defaults.", e);
+          console.error("OrderBuilder: Failed to parse products from localStorage, initializing as empty.", e);
            localStorage.removeItem("coffeeProducts"); // Clear invalid data
+           // loadedProducts remains empty array
         }
       } else {
-        console.log("OrderBuilder: No products found in localStorage, using defaults.");
-      }
-
-      // If loadedProducts is still null, use defaults
-      if (loadedProducts === null) {
-        const defaultProds = getDefaultProducts();
-        console.log("OrderBuilder: Setting default products.", defaultProds.length);
-        loadedProducts = defaultProds;
-        try {
-            localStorage.setItem("coffeeProducts", JSON.stringify(defaultProds));
-            console.log("OrderBuilder: Saved default products to localStorage.");
-        } catch (lsError) {
-            console.error("OrderBuilder: Failed to save default products to localStorage.", lsError);
-             toast({
-                title: "Ошибка LocalStorage",
-                description: "Не удалось сохранить начальные товары.",
-                variant: "destructive",
-             });
-        }
+        console.log("OrderBuilder: No products found in localStorage, initializing as empty.");
+        // loadedProducts remains empty array
       }
     } catch (lsError) {
-        console.error("OrderBuilder: Error accessing localStorage. Using defaults.", lsError);
-        const defaultProds = getDefaultProducts();
-        console.log("OrderBuilder: Setting default products due to localStorage access error.");
-        loadedProducts = defaultProds;
+        console.error("OrderBuilder: Error accessing localStorage. Initializing as empty.", lsError);
+        // loadedProducts remains empty array
          toast({
             title: "Ошибка LocalStorage",
-            description: "Не удалось загрузить или сохранить товары. Используются значения по умолчанию.",
+            description: "Не удалось загрузить товары. Список будет пустым.",
             variant: "destructive",
          });
     }
 
-    // Set state *once*
     setProducts(loadedProducts);
     console.log("OrderBuilder: setProducts called with:", loadedProducts.length, "products");
 
@@ -101,31 +81,41 @@ export function OrderBuilder() {
     if (!isClient) return;
 
     const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === "coffeeProducts" && event.newValue) {
+      if (event.key === "coffeeProducts") { // Check even if newValue is null (meaning cleared)
          console.log("OrderBuilder: Detected storage change for coffeeProducts.");
+         let updatedProducts: Product[] = []; // Default to empty if cleared or invalid
         try {
-          const updatedProducts = JSON.parse(event.newValue);
-           // Validate the updated products
-          if (Array.isArray(updatedProducts) && updatedProducts.every(p => p && typeof p.id === 'string')) {
-             console.log("OrderBuilder: Applying updated products from storage event.", updatedProducts.length);
-            setProducts(updatedProducts);
-            // Also update items in the current order if their info changed
-            setOrder(prevOrder => {
-                const updatedOrder = prevOrder.map(orderItem => {
-                    const updatedProduct = updatedProducts.find(p => p.id === orderItem.id);
-                    // Keep quantity, update the rest if product exists
-                    return updatedProduct ? { ...updatedProduct, quantity: orderItem.quantity } : null; // Mark for removal if product deleted
-                }).filter(item => item !== null) as OrderItem[]; // Filter out removed items
-
-                 console.log("OrderBuilder: Order updated based on storage change.", updatedOrder.length);
-                 return updatedOrder;
-            });
-          } else {
-             console.warn("OrderBuilder: Invalid data received from storage event. Ignoring.");
-          }
+           if (event.newValue) { // Only parse if there's a new value
+               const parsed = JSON.parse(event.newValue);
+               // Validate the updated products
+               if (Array.isArray(parsed) && parsed.every(p => p && typeof p.id === 'string')) {
+                  console.log("OrderBuilder: Applying updated products from storage event.", parsed.length);
+                  updatedProducts = parsed;
+               } else {
+                  console.warn("OrderBuilder: Invalid data received from storage event. Clearing products.");
+                  // Keep updatedProducts as empty array
+               }
+           } else {
+               console.log("OrderBuilder: coffeeProducts cleared in storage. Clearing products.");
+               // Keep updatedProducts as empty array
+           }
         } catch (e) {
           console.error("OrderBuilder: Error processing storage event:", e);
+          // Keep updatedProducts as empty array on error
         }
+
+        // Always update state, even if it's to an empty array
+        setProducts(updatedProducts);
+        // Also update items in the current order if their info changed or they were deleted
+        setOrder(prevOrder => {
+            const updatedOrder = prevOrder.map(orderItem => {
+                const updatedProduct = updatedProducts.find(p => p.id === orderItem.id);
+                return updatedProduct ? { ...updatedProduct, quantity: orderItem.quantity } : null;
+            }).filter(item => item !== null) as OrderItem[];
+
+             console.log("OrderBuilder: Order updated based on storage change.", updatedOrder.length);
+             return updatedOrder;
+        });
       }
     };
 
@@ -167,7 +157,7 @@ export function OrderBuilder() {
   };
 
   const handleCheckout = () => {
-    if (!isClient) return; // Don't run on server
+    if (!isClient) return;
 
     if (order.length === 0) {
         toast({
@@ -179,14 +169,12 @@ export function OrderBuilder() {
     }
 
     const orderData = {
-        id: `order_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`, // Add unique ID
-        // Include volume in saved items if it exists
+        id: `order_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         items: order.map(item => ({ name: item.name, volume: item.volume, quantity: item.quantity, price: item.price })),
         totalPrice: totalPrice,
         timestamp: new Date().toISOString(),
     };
 
-    // Simulate saving to a database (using local storage for demo)
     try {
       const pastOrders = JSON.parse(localStorage.getItem("coffeeOrders") || "[]");
       pastOrders.push(orderData);
@@ -196,7 +184,7 @@ export function OrderBuilder() {
         title: "Заказ оформлен!",
         description: `Итого: ${totalPrice.toFixed(2)} ₽. Ваш заказ сохранен.`,
       });
-      clearOrder(); // Clear the order after successful checkout
+      clearOrder();
     } catch (error) {
        console.error("Failed to save order:", error);
        toast({
@@ -209,7 +197,6 @@ export function OrderBuilder() {
 
 
   if (!isClient) {
-    // Simple text loader for server-side rendering or before hydration
     return (
          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
              <div className="lg:col-span-2">
@@ -234,37 +221,38 @@ export function OrderBuilder() {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8"> {/* Reduced gap */}
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8">
       {/* Product List */}
       <div className="lg:col-span-2">
         <h2 className="text-2xl font-semibold mb-4 text-primary">Доступные товары</h2>
         {products.length === 0 ? (
-           <p className="text-muted-foreground">Товары отсутствуют. Добавьте их во вкладке "Управление товарами".</p>
+           <p className="text-muted-foreground">Товары отсутствуют. Добавьте их вручную или загрузите начальный список во вкладке "Управление товарами".</p>
         ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 gap-2 md:gap-3"> {/* More cols on larger screens, smaller gap */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 gap-2 md:gap-3">
           {products.map((product) => (
-            <Card key={product.id} className="overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-150 flex flex-col text-xs md:text-sm"> {/* Reduced shadow, faster transition, smaller base text */}
+            <Card key={product.id} className="overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-150 flex flex-col text-xs md:text-sm">
               <CardHeader className="p-0">
-                <div className="relative h-20 w-full"> {/* Smaller image */}
+                <div className="relative h-20 w-full">
                    <Image
-                    src={product.imageUrl || `https://picsum.photos/100/80?random=${product.id}`} // Smaller placeholder
+                    src={product.imageUrl || `https://picsum.photos/100/80?random=${product.id}`}
                     alt={product.name}
                     layout="fill"
                     objectFit="cover"
                     data-ai-hint={product.dataAiHint || 'кофе'}
                     className="bg-muted"
-                    sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, (max-width: 1280px) 33vw, 25vw" // Optimize image loading
+                    sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, (max-width: 1280px) 33vw, 25vw"
+                    onError={(e) => { e.currentTarget.src = `https://picsum.photos/100/80?random=${product.id}&error=1` }} // Fallback for broken image URLs
                     />
                 </div>
               </CardHeader>
-              <CardContent className="p-1.5 md:p-2 flex-grow"> {/* Reduced padding */}
-                 <CardTitle className="text-xs md:text-sm font-medium mb-0.5 line-clamp-2 leading-tight"> {/* Reduced font-size, weight, margin, leading */}
+              <CardContent className="p-1.5 md:p-2 flex-grow">
+                 <CardTitle className="text-xs md:text-sm font-medium mb-0.5 line-clamp-2 leading-tight">
                      {product.name} {product.volume && <span className="text-muted-foreground font-normal">({product.volume})</span>}
                  </CardTitle>
-                 <p className="text-xs md:text-sm text-foreground font-semibold">{product.price.toFixed(0)} ₽</p> {/* Removed decimals */}
+                 <p className="text-xs md:text-sm text-foreground font-semibold">{product.price.toFixed(0)} ₽</p>
               </CardContent>
-              <CardFooter className="p-1.5 md:p-2 pt-0 mt-auto"> {/* Reduced padding */}
-                <Button onClick={() => addToOrder(product)} className="w-full h-7 md:h-8 text-xs" variant="outline"> {/* Smaller button */}
+              <CardFooter className="p-1.5 md:p-2 pt-0 mt-auto">
+                <Button onClick={() => addToOrder(product)} className="w-full h-7 md:h-8 text-xs" variant="outline">
                   <PlusCircle className="mr-1 h-3 w-3" /> Добавить
                 </Button>
               </CardFooter>
@@ -276,14 +264,14 @@ export function OrderBuilder() {
 
       {/* Current Order */}
       <div className="lg:col-span-1">
-        <Card className="sticky top-4 md:top-8 shadow-md"> {/* Reduced shadow */}
-          <CardHeader className="p-3 md:p-4"> {/* Reduced padding */}
-            <CardTitle className="text-base md:text-lg flex items-center justify-between"> {/* Smaller title */}
+        <Card className="sticky top-4 md:top-8 shadow-md">
+          <CardHeader className="p-3 md:p-4">
+            <CardTitle className="text-base md:text-lg flex items-center justify-between">
               <span>Текущий заказ</span>
                <ShoppingCart className="h-4 w-4 md:h-5 md:w-5 text-primary" />
             </CardTitle>
           </CardHeader>
-          <CardContent className="max-h-[300px] md:max-h-[400px] overflow-y-auto p-3 md:p-4 pt-0"> {/* Reduced padding */}
+          <CardContent className="max-h-[300px] md:max-h-[400px] overflow-y-auto p-3 md:p-4 pt-0">
             {order.length === 0 ? (
               <p className="text-muted-foreground text-center py-3 md:py-4 text-sm">Ваш заказ пуст.</p>
             ) : (
@@ -292,12 +280,12 @@ export function OrderBuilder() {
                   <li key={item.id} className="flex justify-between items-center text-sm">
                     <div>
                       <span className="font-medium">{item.name} {item.volume && <span className="text-xs text-muted-foreground">({item.volume})</span>}</span>
-                      <Badge variant="secondary" className="ml-1.5 px-1 py-0 text-[10px] md:text-xs">{item.quantity}</Badge> {/* Smaller badge */}
+                      <Badge variant="secondary" className="ml-1.5 px-1 py-0 text-[10px] md:text-xs">{item.quantity}</Badge>
                     </div>
-                    <div className="flex items-center gap-1 md:gap-1.5"> {/* Reduced gap */}
-                       <span className="font-mono text-xs md:text-sm whitespace-nowrap">{(item.price * item.quantity).toFixed(0)} ₽</span> {/* Smaller price text, removed decimals */}
-                      <Button variant="ghost" size="icon" className="h-5 w-5 md:h-6 md:w-6" onClick={() => removeFromOrder(item.id)}> {/* Smaller button */}
-                         <MinusCircle className="h-3 w-3 text-destructive" /> {/* Smaller icon */}
+                    <div className="flex items-center gap-1 md:gap-1.5">
+                       <span className="font-mono text-xs md:text-sm whitespace-nowrap">{(item.price * item.quantity).toFixed(0)} ₽</span>
+                      <Button variant="ghost" size="icon" className="h-5 w-5 md:h-6 md:w-6" onClick={() => removeFromOrder(item.id)}>
+                         <MinusCircle className="h-3 w-3 text-destructive" />
                          <span className="sr-only">Убрать 1 {item.name}</span>
                       </Button>
                     </div>
@@ -308,19 +296,19 @@ export function OrderBuilder() {
             )}
           </CardContent>
           <Separator />
-          <CardFooter className="flex flex-col gap-2 md:gap-3 p-3 md:p-4 pt-3"> {/* Reduced gap and padding */}
+          <CardFooter className="flex flex-col gap-2 md:gap-3 p-3 md:p-4 pt-3">
              {order.length > 0 && (
                 <>
-                 <div className="flex justify-between w-full font-semibold text-sm md:text-base"> {/* Slightly smaller total */}
+                 <div className="flex justify-between w-full font-semibold text-sm md:text-base">
                     <span>Итого:</span>
-                    <span>{totalPrice.toFixed(0)} ₽</span> {/* Removed decimals */}
+                    <span>{totalPrice.toFixed(0)} ₽</span>
                  </div>
                  <div className="flex gap-2 w-full">
-                    <Button onClick={handleCheckout} className="flex-1 h-8 md:h-9 text-xs md:text-sm bg-accent hover:bg-accent/90"> {/* Smaller button */}
+                    <Button onClick={handleCheckout} className="flex-1 h-8 md:h-9 text-xs md:text-sm bg-accent hover:bg-accent/90">
                     Оформить заказ
                     </Button>
-                    <Button variant="outline" onClick={clearOrder} className="h-8 md:h-9 text-xs md:text-sm px-3"> {/* Smaller button */}
-                        <Trash2 className="mr-1 h-3 w-3" /> Очистить {/* Smaller icon */}
+                    <Button variant="outline" onClick={clearOrder} className="h-8 md:h-9 text-xs md:text-sm px-3">
+                        <Trash2 className="mr-1 h-3 w-3" /> Очистить
                     </Button>
                  </div>
 
@@ -335,4 +323,3 @@ export function OrderBuilder() {
     </div>
   );
 }
-

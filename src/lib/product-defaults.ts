@@ -5,11 +5,19 @@ const formatVolume = (volume: number | string | null | undefined): string | unde
   if (volume === null || volume === undefined || volume === '-' || volume === '') {
     return undefined;
   }
+  // Allow strings like "0,2 л" to pass through if already formatted
+  if (typeof volume === 'string' && volume.includes('л')) {
+    return volume;
+  }
   if (typeof volume === 'number') {
     return `${volume.toString().replace('.', ',')} л`;
   }
-   // If it's already a string, assume it's correct or needs minor cleaning
-   return volume.toString().replace('.',',') + ' л';
+   // Handle simple strings that need 'л' added
+   if (typeof volume === 'string' && !volume.includes('л')) {
+      return volume.replace('.',',') + ' л';
+   }
+   // Fallback for unexpected types
+   return undefined;
 };
 
 // Helper function to generate dataAiHint
@@ -36,6 +44,19 @@ const generateHint = (name: string, volume?: string): string => {
      if (nameLower.includes('американо')) hints.push('americano');
      if (nameLower.includes('эспрессо')) hints.push('espresso');
      if (nameLower.includes('раф')) hints.push('raf');
+     if (nameLower.includes('халва')) hints.push('halva');
+     if (nameLower.includes('глинтвейн')) hints.push('mulled');
+     if (nameLower.includes('тоник')) hints.push('tonic');
+     if (nameLower.includes('бамбл')) hints.push('bumble');
+     if (nameLower.includes('сироп')) hints.push('syrup');
+     if (nameLower.includes('молоко')) hints.push('milk');
+     if (nameLower.includes('миндаль')) hints.push('almond');
+     if (nameLower.includes('кокос')) hints.push('coconut');
+     if (nameLower.includes('банан')) hints.push('banana');
+     if (nameLower.includes('жвачка')) hints.push('gum');
+     if (nameLower.includes('кола')) hints.push('cola');
+     if (nameLower.includes('батончик')) hints.push('bar');
+     if (nameLower.includes('мороженое')) hints.push('ice cream');
 
     // Return unique hints, limited to 2-3 relevant ones
     return [...new Set(hints)].slice(0, 3).join(' ');
@@ -82,12 +103,12 @@ const rawProducts = [
   { name: 'Мороженое', volume: null, price: 165, imageUrl: 'https://images.unsplash.com/photo-1576506295286-5cda18df43e7' }, // Hint: ice cream cone scoop
 ];
 
-
-export const getDefaultProducts = (): Product[] => rawProducts.map((p, index) => {
+// Returns the processed list of raw products with IDs, formatted volumes, and hints
+export const getRawProductData = (): Product[] => rawProducts.map((p, index) => {
   const formattedVolume = formatVolume(p.volume);
    // Simple unique ID generation (consider more robust methods for production)
    const idSuffix = p.name.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 5) + (formattedVolume ? formattedVolume.replace(/[^0-9]/g, '') : '') + index;
-   const id = `prod_${idSuffix}`;
+   const id = `prod_${Date.now().toString().slice(-4)}_${idSuffix}`; // Add timestamp element
 
    return {
     id: id,
@@ -99,3 +120,10 @@ export const getDefaultProducts = (): Product[] => rawProducts.map((p, index) =>
     dataAiHint: generateHint(p.name, formattedVolume),
    };
 });
+
+
+// Now returns an empty array by default
+export const getDefaultProducts = (): Product[] => {
+    console.log("getDefaultProducts called, returning empty array.");
+    return [];
+};

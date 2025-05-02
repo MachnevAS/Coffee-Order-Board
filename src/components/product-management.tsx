@@ -18,9 +18,9 @@ import {
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import type { Product } from "@/types/product";
-import { PlusCircle, Edit, Trash2, Save, X } from "lucide-react"; // Added icons
+import { PlusCircle, Edit, Trash2, Save, X, FilePlus2 } from "lucide-react"; // Added icons
 import Image from "next/image";
-import { getDefaultProducts } from "@/lib/product-defaults"; // Import defaults
+import { getDefaultProducts, getRawProductData } from "@/lib/product-defaults"; // Import defaults and raw data getter
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,6 +32,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { ScrollArea } from "@/components/ui/scroll-area"; // Import ScrollArea
 
 const productSchema = z.object({
   name: z.string().min(2, "Название товара должно содержать не менее 2 символов"),
@@ -72,87 +73,64 @@ export function ProductManagement() {
   });
 
    useEffect(() => {
-    // This effect runs only once on the client after hydration
     setIsClient(true);
-    console.log("ProductManagement: useEffect running, isClient=true"); // Log start
+    console.log("ProductManagement: useEffect running, isClient=true");
 
-    let loadedProducts: Product[] | null = null; // Temp variable to store products to be set
+    let loadedProducts: Product[] | null = null;
 
-    try { // Wrap all localStorage access
+    try {
         const storedProducts = localStorage.getItem("coffeeProducts");
-        console.log("ProductManagement: storedProducts from localStorage:", storedProducts ? storedProducts.substring(0, 100) + '...' : null); // Log stored data
+        console.log("ProductManagement: storedProducts from localStorage:", storedProducts ? storedProducts.substring(0, 100) + '...' : null);
 
         if (storedProducts) {
             try {
-              const parsedProducts: any = JSON.parse(storedProducts); // Use 'any' temporarily for validation
-              // More robust validation: check if it's an array and items have basic product structure
-              if (Array.isArray(parsedProducts) && parsedProducts.length > 0 && parsedProducts.every(p => p && typeof p.id === 'string' && typeof p.name === 'string' && typeof p.price === 'number')) {
+              const parsedProducts: any = JSON.parse(storedProducts);
+              if (Array.isArray(parsedProducts) && parsedProducts.every(p => p && typeof p.id === 'string' && typeof p.name === 'string' && typeof p.price === 'number')) {
                  console.log("ProductManagement: Parsed valid products from localStorage.", parsedProducts.length);
-                 loadedProducts = parsedProducts as Product[]; // Assign to temp variable after validation
+                 loadedProducts = parsedProducts as Product[];
               } else {
-                 console.warn("ProductManagement: Stored products invalid structure or empty, falling back to defaults.");
-                 localStorage.removeItem("coffeeProducts"); // Clear invalid data
+                 console.warn("ProductManagement: Stored products invalid structure, initializing as empty.");
+                 loadedProducts = []; // Initialize as empty if structure is invalid
+                 localStorage.removeItem("coffeeProducts");
               }
             } catch (e) {
-              console.error("ProductManagement: Failed to parse products from localStorage, falling back to defaults.", e);
-              localStorage.removeItem("coffeeProducts"); // Clear invalid data
+              console.error("ProductManagement: Failed to parse products from localStorage, initializing as empty.", e);
+              loadedProducts = []; // Initialize as empty on parse error
+              localStorage.removeItem("coffeeProducts");
             }
         } else {
-            console.log("ProductManagement: No products found in localStorage, using defaults.");
-        }
-
-        // If loadedProducts is still null (no valid data found or parsing failed), use defaults
-        if (loadedProducts === null) {
-            const defaultProds = getDefaultProducts();
-            console.log("ProductManagement: Setting default products.", defaultProds.length);
-            loadedProducts = defaultProds;
-            try {
-                localStorage.setItem("coffeeProducts", JSON.stringify(defaultProds));
-                console.log("ProductManagement: Saved default products to localStorage.");
-            } catch (lsError) {
-                console.error("ProductManagement: Failed to save default products to localStorage.", lsError);
-                toast({
-                    title: "Ошибка LocalStorage",
-                    description: "Не удалось сохранить начальные товары.",
-                    variant: "destructive",
-                });
-            }
+            console.log("ProductManagement: No products found in localStorage, initializing as empty.");
+            loadedProducts = []; // Initialize as empty if nothing stored
+            // Don't automatically save empty array to localStorage here, let user decide
         }
 
     } catch (lsError) {
-        console.error("ProductManagement: Error accessing localStorage. Using defaults.", lsError);
-        // Fallback in case of general localStorage access error
-        const defaultProds = getDefaultProducts();
-        console.log("ProductManagement: Setting default products due to localStorage access error.");
-        loadedProducts = defaultProds;
+        console.error("ProductManagement: Error accessing localStorage. Initializing as empty.", lsError);
+        loadedProducts = []; // Initialize as empty on localStorage access error
          toast({
             title: "Ошибка LocalStorage",
-            description: "Не удалось загрузить или сохранить товары. Используются значения по умолчанию.",
+            description: "Не удалось загрузить товары. Список инициализирован как пустой.",
             variant: "destructive",
          });
     }
 
-    // Set state *once* with either loaded or default products
     setProducts(loadedProducts);
     console.log("ProductManagement: setProducts called with:", loadedProducts.length, "products");
 
-   }, []); // Empty dependency array ensures this runs only once on mount
+   }, []); // Run only once on mount
 
 
    // Persist products to localStorage whenever they change
    useEffect(() => {
-    // Only run this effect after the initial load and if products state is not empty
-    if (isClient && products.length > 0) {
+    if (isClient) { // No need to check products.length > 0, save even if empty
         console.log("ProductManagement: Persisting products to localStorage", products.length);
         try {
             const currentStoredValue = localStorage.getItem("coffeeProducts");
             const newProductsJson = JSON.stringify(products);
 
-            // Only update localStorage if the value has actually changed
             if (currentStoredValue !== newProductsJson) {
                 localStorage.setItem("coffeeProducts", newProductsJson);
                 console.log("ProductManagement: Products saved to localStorage.");
-                // Trigger a storage event for other tabs (like OrderBuilder)
                 window.dispatchEvent(new StorageEvent('storage', {
                     key: 'coffeeProducts',
                     newValue: newProductsJson,
@@ -169,19 +147,18 @@ export function ProductManagement() {
              });
         }
     }
-   }, [products, isClient, toast]); // Rerun when products, isClient, or toast changes
+   }, [products, isClient, toast]);
 
 
   const onSubmit = (data: ProductFormData) => {
-     if (!isClient) return; // Don't run on server
+     if (!isClient) return;
 
     const newProduct: Product = {
-      id: `prod_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`, // Improved unique ID
+      id: `prod_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
       name: data.name,
-      volume: data.volume || undefined, // Store as undefined if empty
+      volume: data.volume || undefined,
       price: data.price,
-      imageUrl: data.imageUrl || undefined, // Don't assign default here, do it in render
-      // Generate hint using name and numeric part of volume, fallback to name if volume is empty
+      imageUrl: data.imageUrl || undefined,
       dataAiHint: data.dataAiHint || [data.name.toLowerCase(), data.volume?.replace(/[^0-9.,]/g, '')].filter(Boolean).slice(0, 2).join(' ') || data.name.toLowerCase(),
     };
 
@@ -191,7 +168,7 @@ export function ProductManagement() {
       title: "Товар добавлен",
       description: `${data.name} ${data.volume || ''} успешно добавлен.`,
     });
-    form.reset(); // Reset the form fields
+    form.reset();
   };
 
    const removeProduct = (id: string) => {
@@ -200,9 +177,8 @@ export function ProductManagement() {
     toast({
       title: "Товар удален",
       description: "Товар был удален.",
-      variant: "destructive", // Use destructive variant for deletion confirmation
+      variant: "destructive",
     });
-     // If removing the product being edited, cancel edit mode
     if (editingProductId === id) {
         setEditingProductId(null);
     }
@@ -210,7 +186,7 @@ export function ProductManagement() {
 
   const startEditing = (product: Product) => {
     setEditingProductId(product.id);
-    editForm.reset({ // Populate the edit form
+    editForm.reset({
         name: product.name,
         volume: product.volume || "",
         price: product.price,
@@ -221,7 +197,7 @@ export function ProductManagement() {
 
   const cancelEditing = () => {
     setEditingProductId(null);
-    editForm.reset(); // Clear edit form
+    editForm.reset();
   };
 
   const onEditSubmit = (data: ProductFormData) => {
@@ -231,12 +207,11 @@ export function ProductManagement() {
       prevProducts.map((p) =>
         p.id === editingProductId
           ? {
-              ...p, // Keep the original ID
+              ...p,
               name: data.name,
               volume: data.volume || undefined,
               price: data.price,
-              imageUrl: data.imageUrl || undefined, // Update or keep old image, store undefined if empty
-               // Update hint, use existing if not provided, fallback to generated if all else fails
+              imageUrl: data.imageUrl || undefined,
               dataAiHint: data.dataAiHint || p.dataAiHint || [data.name.toLowerCase(), data.volume?.replace(/[^0-9.,]/g, '')].filter(Boolean).slice(0, 2).join(' ') || data.name.toLowerCase(),
             }
           : p
@@ -247,12 +222,36 @@ export function ProductManagement() {
       title: "Товар обновлен",
       description: `${data.name} ${data.volume || ''} успешно обновлен.`,
     });
-    cancelEditing(); // Exit edit mode
+    cancelEditing();
   };
+
+   // Function to load raw products
+   const loadRawProducts = () => {
+    if (!isClient) return;
+    const rawProductData = getRawProductData();
+    console.log("ProductManagement: Loading raw products.", rawProductData.length);
+    // Append raw products to the current list, ensuring no duplicates by ID
+    setProducts(prevProducts => {
+        const existingIds = new Set(prevProducts.map(p => p.id));
+        const productsToAdd = rawProductData.filter(rp => !existingIds.has(rp.id));
+        if (productsToAdd.length === 0) {
+             toast({
+                title: "Товары уже загружены",
+                description: "Начальный список товаров уже присутствует.",
+                variant: "default",
+             });
+            return prevProducts; // No change if all raw products already exist
+        }
+        toast({
+            title: "Начальные товары добавлены",
+            description: `Добавлено ${productsToAdd.length} новых товаров из начального списка.`,
+        });
+        return [...prevProducts, ...productsToAdd];
+    });
+   }
 
 
    if (!isClient) {
-    // Simple text loader for server-side rendering or before hydration
     return (
          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
              <Card className="shadow-lg">
@@ -283,79 +282,18 @@ export function ProductManagement() {
        {/* Add Product Form */}
       <Card className="shadow-md">
         <CardHeader>
-          <CardTitle className="flex items-center text-lg md:text-xl"> {/* Slightly smaller */}
+          <CardTitle className="flex items-center text-lg md:text-xl">
              <PlusCircle className="h-5 w-5 mr-2 text-primary" /> Добавить новый товар
           </CardTitle>
         </CardHeader>
         <CardContent>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4"> {/* Reduced space */}
-              <FormField
-                control={form.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Название</FormLabel>
-                    <FormControl>
-                      <Input placeholder="например, Латте" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="volume"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Объём (необязательно)</FormLabel>
-                    <FormControl>
-                      <Input placeholder="например, 0,3 л" {...field} value={field.value ?? ''} />
-                    </FormControl>
-                     <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="price"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Цена (₽)</FormLabel>
-                    <FormControl>
-                      {/* Use type="text" and inputMode="numeric" for better mobile experience */}
-                      <Input type="text" inputMode="numeric" pattern="[0-9]*([\.,][0-9]+)?" placeholder="например, 165" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="imageUrl"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>URL изображения (необязательно)</FormLabel>
-                    <FormControl>
-                      <Input placeholder="https://..." {...field} value={field.value ?? ''} />
-                    </FormControl>
-                     <FormMessage />
-                  </FormItem>
-                )}
-              />
-               <FormField
-                control={form.control}
-                name="dataAiHint"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Подсказка для ИИ-изображения (необязательно)</FormLabel>
-                    <FormControl>
-                      <Input placeholder="например, латте арт" {...field} value={field.value ?? ''} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <FormField control={form.control} name="name" render={({ field }) => ( <FormItem><FormLabel>Название</FormLabel><FormControl><Input placeholder="например, Латте" {...field} /></FormControl><FormMessage /></FormItem> )} />
+              <FormField control={form.control} name="volume" render={({ field }) => ( <FormItem><FormLabel>Объём (необязательно)</FormLabel><FormControl><Input placeholder="например, 0,3 л" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem> )} />
+              <FormField control={form.control} name="price" render={({ field }) => ( <FormItem><FormLabel>Цена (₽)</FormLabel><FormControl><Input type="text" inputMode="numeric" pattern="[0-9]*([\.,][0-9]+)?" placeholder="например, 165" {...field} /></FormControl><FormMessage /></FormItem> )} />
+              <FormField control={form.control} name="imageUrl" render={({ field }) => ( <FormItem><FormLabel>URL изображения (необязательно)</FormLabel><FormControl><Input placeholder="https://..." {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem> )} />
+              <FormField control={form.control} name="dataAiHint" render={({ field }) => ( <FormItem><FormLabel>Подсказка для ИИ-изображения (необязательно)</FormLabel><FormControl><Input placeholder="например, латте арт" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem> )} />
               <Button type="submit" className="w-full bg-accent hover:bg-accent/90">Добавить товар</Button>
             </form>
           </Form>
@@ -363,95 +301,97 @@ export function ProductManagement() {
       </Card>
 
        {/* Existing Products List */}
-       <Card className="shadow-md">
-        <CardHeader>
-          <CardTitle className="text-lg md:text-xl">Существующие товары</CardTitle> {/* Slightly smaller */}
+       <Card className="shadow-md flex flex-col h-full"> {/* Ensure card takes full height */}
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-lg md:text-xl">Существующие товары</CardTitle>
+           <Button variant="outline" size="sm" onClick={loadRawProducts}>
+             <FilePlus2 className="h-4 w-4 mr-2" /> Загрузить начальные
+           </Button>
         </CardHeader>
-        <CardContent className="max-h-[600px] overflow-y-auto">
-          {products.length === 0 ? (
-            <p className="text-muted-foreground text-center py-4">Товары еще не добавлены.</p>
-          ) : (
-            <ul className="space-y-3">
-              {products.map((product) => (
-                <li key={product.id} className="flex flex-col p-3 border rounded-md bg-card transition-colors duration-150">
-                  {editingProductId === product.id ? (
-                    // Edit Form
-                    <Form {...editForm}>
-                        <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-3">
-                           <FormField control={editForm.control} name="name" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Название</FormLabel><FormControl><Input {...field} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
-                           <FormField control={editForm.control} name="volume" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Объём</FormLabel><FormControl><Input {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
-                           <FormField control={editForm.control} name="price" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Цена (₽)</FormLabel><FormControl><Input type="text" inputMode="numeric" pattern="[0-9]*([\.,][0-9]+)?" {...field} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
-                           <FormField control={editForm.control} name="imageUrl" render={({ field }) => ( <FormItem><FormLabel className="text-xs">URL изображения</FormLabel><FormControl><Input {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
-                           <FormField control={editForm.control} name="dataAiHint" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Подсказка ИИ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
-                           <div className="flex justify-end gap-2 pt-2">
-                                <Button type="button" variant="ghost" size="sm" onClick={cancelEditing}><X className="h-4 w-4 mr-1" /> Отмена</Button>
-                                <Button type="submit" size="sm"><Save className="h-4 w-4 mr-1" /> Сохранить</Button>
-                           </div>
-                        </form>
-                    </Form>
-                  ) : (
-                    // Display View
-                    <div className="flex items-center justify-between gap-2">
-                       <div className="flex items-center gap-2 md:gap-3 overflow-hidden flex-grow"> {/* Allow growth */}
-                        <div className="relative h-10 w-10 md:h-12 md:w-12 rounded-md overflow-hidden flex-shrink-0">
-                             <Image
-                              src={product.imageUrl || `https://picsum.photos/100/100?random=${product.id}`}
-                              alt={product.name}
-                              layout="fill"
-                              objectFit="cover"
-                              data-ai-hint={product.dataAiHint || 'кофе'}
-                              className="bg-muted"
-                               sizes="40px md:48px"
-                            />
+        <CardContent className="flex-grow overflow-hidden p-0"> {/* Remove padding, let ScrollArea handle it */}
+          <ScrollArea className="h-[500px] md:h-[600px] p-6 pt-0"> {/* Adjust height and add padding */}
+            {products.length === 0 ? (
+              <p className="text-muted-foreground text-center py-4">Товары еще не добавлены.</p>
+            ) : (
+              <ul className="space-y-3">
+                {products.map((product) => (
+                  <li key={product.id} className="flex flex-col p-3 border rounded-md bg-card transition-colors duration-150">
+                    {editingProductId === product.id ? (
+                      <Form {...editForm}>
+                          <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-3">
+                             <FormField control={editForm.control} name="name" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Название</FormLabel><FormControl><Input {...field} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
+                             <FormField control={editForm.control} name="volume" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Объём</FormLabel><FormControl><Input {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
+                             <FormField control={editForm.control} name="price" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Цена (₽)</FormLabel><FormControl><Input type="text" inputMode="numeric" pattern="[0-9]*([\.,][0-9]+)?" {...field} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
+                             <FormField control={editForm.control} name="imageUrl" render={({ field }) => ( <FormItem><FormLabel className="text-xs">URL изображения</FormLabel><FormControl><Input {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
+                             <FormField control={editForm.control} name="dataAiHint" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Подсказка ИИ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
+                             <div className="flex justify-end gap-2 pt-2">
+                                  <Button type="button" variant="ghost" size="sm" onClick={cancelEditing}><X className="h-4 w-4 mr-1" /> Отмена</Button>
+                                  <Button type="submit" size="sm"><Save className="h-4 w-4 mr-1" /> Сохранить</Button>
+                             </div>
+                          </form>
+                      </Form>
+                    ) : (
+                      <div className="flex items-center justify-between gap-2">
+                         <div className="flex items-center gap-2 md:gap-3 overflow-hidden flex-grow">
+                          <div className="relative h-10 w-10 md:h-12 md:w-12 rounded-md overflow-hidden flex-shrink-0">
+                               <Image
+                                src={product.imageUrl || `https://picsum.photos/100/100?random=${product.id}`}
+                                alt={product.name}
+                                layout="fill"
+                                objectFit="cover"
+                                data-ai-hint={product.dataAiHint || 'кофе'}
+                                className="bg-muted"
+                                 sizes="40px md:48px"
+                              />
+                          </div>
+
+                          <div className="overflow-hidden flex-grow">
+                              <p className="font-medium truncate text-sm md:text-base">{product.name}</p>
+                              {(product.volume || product.price !== undefined) && (
+                                  <p className="text-xs md:text-sm text-muted-foreground">
+                                      {product.volume && <span>{product.volume} / </span>}
+                                      {product.price.toFixed(0)} ₽
+                                  </p>
+                              )}
+                          </div>
+                         </div>
+
+                        <div className="flex gap-1 flex-shrink-0">
+                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => startEditing(product)}>
+                               <Edit className="h-4 w-4" />
+                               <span className="sr-only">Редактировать {product.name}</span>
+                             </Button>
+
+                              <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10">
+                                          <Trash2 className="h-4 w-4" />
+                                          <span className="sr-only">Удалить {product.name}</span>
+                                      </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                      <AlertDialogHeader>
+                                      <AlertDialogTitle>Вы уверены?</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                          Это действие необратимо. Товар "{product.name} {product.volume || ''}" будет удален навсегда.
+                                      </AlertDialogDescription>
+                                      </AlertDialogHeader>
+                                      <AlertDialogFooter>
+                                      <AlertDialogCancel>Отмена</AlertDialogCancel>
+                                      <AlertDialogAction onClick={() => removeProduct(product.id)} className={buttonVariants({ variant: "destructive" })}>
+                                          Удалить
+                                      </AlertDialogAction>
+                                      </AlertDialogFooter>
+                                  </AlertDialogContent>
+                              </AlertDialog>
                         </div>
-
-                        <div className="overflow-hidden flex-grow"> {/* Allow growth */}
-                            <p className="font-medium truncate text-sm md:text-base">{product.name}</p>
-                            {(product.volume || product.price !== undefined) && (
-                                <p className="text-xs md:text-sm text-muted-foreground">
-                                    {product.volume && <span>{product.volume} / </span>}
-                                    {product.price.toFixed(0)} ₽ {/* Removed decimals */}
-                                </p>
-                            )}
-                        </div>
-                       </div>
-
-                      <div className="flex gap-1 flex-shrink-0">
-                           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => startEditing(product)}>
-                             <Edit className="h-4 w-4" />
-                             <span className="sr-only">Редактировать {product.name}</span>
-                           </Button>
-
-                            <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10">
-                                        <Trash2 className="h-4 w-4" />
-                                        <span className="sr-only">Удалить {product.name}</span>
-                                    </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                    <AlertDialogTitle>Вы уверены?</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                        Это действие необратимо. Товар "{product.name} {product.volume || ''}" будет удален навсегда.
-                                    </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                    <AlertDialogCancel>Отмена</AlertDialogCancel>
-                                    {/* Use buttonVariants for destructive action style */}
-                                    <AlertDialogAction onClick={() => removeProduct(product.id)} className={buttonVariants({ variant: "destructive" })}>
-                                        Удалить
-                                    </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                </AlertDialogContent>
-                            </AlertDialog>
                       </div>
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+           </ScrollArea>
         </CardContent>
       </Card>
     </div>
