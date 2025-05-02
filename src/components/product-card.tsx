@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { useState } from 'react';
@@ -6,24 +7,66 @@ import Image from "next/image";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge"; // Import Badge
-import { PlusCircle, MinusCircle, Coffee } from "lucide-react"; // Import MinusCircle
+import { PlusCircle, MinusCircle, Coffee, Crown, Award, Medal } from "lucide-react"; // Import MinusCircle and rank icons
 import type { Product } from "@/types/product";
 import { cn } from '@/lib/utils';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"; // Import Tooltip components
 
 interface ProductCardProps {
   product: Product;
   onAddToOrder: (product: Product) => void;
   onRemoveFromOrder: (productId: string) => void; // Add remove function prop
   orderQuantity: number | undefined; // Add quantity prop
+  popularityRank?: number; // Optional rank (1, 2, or 3)
 }
 
-export function ProductCard({ product, onAddToOrder, onRemoveFromOrder, orderQuantity }: ProductCardProps) {
+export function ProductCard({ product, onAddToOrder, onRemoveFromOrder, orderQuantity, popularityRank }: ProductCardProps) {
   const [imgError, setImgError] = useState(false);
   const imgSrc = product.imageUrl || `https://picsum.photos/100/80?random=${product.id}`;
 
+  const RankIcon = () => {
+    if (!popularityRank) return null;
+
+    let icon = null;
+    let tooltipText = "";
+    let colorClass = "";
+
+    if (popularityRank === 1) {
+        icon = <Crown className="h-4 w-4" />;
+        tooltipText = "Топ 1 по популярности";
+        colorClass = "text-yellow-500";
+    } else if (popularityRank === 2) {
+        icon = <Award className="h-4 w-4" />;
+        tooltipText = "Топ 2 по популярности";
+        colorClass = "text-gray-400"; // Silver-like
+    } else if (popularityRank === 3) {
+        icon = <Medal className="h-4 w-4" />;
+        tooltipText = "Топ 3 по популярности";
+        colorClass = "text-orange-400"; // Bronze-like
+    }
+
+    if (!icon) return null;
+
+    return (
+         <TooltipProvider delayDuration={100}>
+           <Tooltip>
+             <TooltipTrigger asChild>
+                <div className={cn("absolute top-1 right-1 p-0.5 rounded-full bg-background/70 backdrop-blur-sm", colorClass)}>
+                  {icon}
+                </div>
+             </TooltipTrigger>
+             <TooltipContent side="top" className="text-xs px-2 py-1">
+               <p>{tooltipText}</p>
+             </TooltipContent>
+           </Tooltip>
+         </TooltipProvider>
+    );
+  };
+
+
   return (
     <Card key={product.id} className="overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-150 flex flex-col text-xs md:text-sm">
-      <CardHeader className="p-0">
+      <CardHeader className="p-0 relative"> {/* Make header relative for positioning rank icon */}
         <div className="relative h-20 w-full bg-muted flex items-center justify-center">
           {imgError || !product.imageUrl ? (
             <Coffee className="h-10 w-10 text-muted-foreground/50" /> // Fallback icon
@@ -39,6 +82,7 @@ export function ProductCard({ product, onAddToOrder, onRemoveFromOrder, orderQua
               unoptimized={imgSrc.includes('picsum.photos')} // Avoid optimizing picsum placeholders
             />
           )}
+           <RankIcon /> {/* Render the rank icon */}
         </div>
       </CardHeader>
       <CardContent className="p-1.5 md:p-2 flex-grow flex items-center justify-between gap-1"> {/* Adjusted padding & flex items-center */}
@@ -87,3 +131,5 @@ export function ProductCard({ product, onAddToOrder, onRemoveFromOrder, orderQua
     </Card>
   );
 }
+
+    

@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { useState } from 'react';
@@ -38,6 +39,7 @@ interface ProductListItemProps {
   onCancelEditing: () => void;
   onEditSubmit: (data: ProductFormData) => void; // Pass the submit handler
   onRemoveProduct: (id: string) => void;
+  popularityRank?: number; // Added for consistency, though not used visually here
 }
 
 export function ProductListItem({
@@ -48,6 +50,7 @@ export function ProductListItem({
   onCancelEditing,
   onEditSubmit,
   onRemoveProduct,
+  popularityRank, // Receive prop
 }: ProductListItemProps) {
   const [imgError, setImgError] = useState(false);
   const imgSrc = product.imageUrl || `https://picsum.photos/100/100?random=${product.id}`;
@@ -133,3 +136,5 @@ export function ProductListItem({
     </li>
   );
 }
+
+    

@@ -42,6 +42,30 @@ interface OrderItem extends Product {
 type SortOption = 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc' | 'popularity-desc'; // Removed 'default', name-asc is now the implicit default
 const SORT_STORAGE_KEY = 'orderBuilderSortOption'; // Key for localStorage
 
+// Helper function to calculate product popularity
+const calculatePopularity = (): Map<string, number> => {
+  const popularityMap = new Map<string, number>();
+  try {
+    const storedOrders = localStorage.getItem('coffeeOrders');
+    if (storedOrders) {
+      const pastOrders: Order[] = JSON.parse(storedOrders);
+      if (Array.isArray(pastOrders)) {
+        pastOrders.forEach(ord => {
+          ord.items.forEach(item => {
+            popularityMap.set(item.id, (popularityMap.get(item.id) || 0) + item.quantity);
+          });
+        });
+        console.log("Popularity map calculated:", Object.fromEntries(popularityMap));
+      } else {
+         console.warn("Invalid order data found in localStorage for popularity.");
+      }
+    }
+  } catch (e) {
+    console.error("Error reading or parsing sales history for popularity:", e);
+  }
+  return popularityMap;
+};
+
 export function OrderBuilder() {
   // --- All Hooks called unconditionally at the top ---
   const [products, setProducts] = useState<Product[]>([]);
@@ -196,6 +220,24 @@ export function OrderBuilder() {
   };
 
 
+  // Memoize popularity ranking for badges
+  const topProductsRanking = useMemo(() => {
+    if (!isClient) return new Map<string, number>();
+
+    console.log("OrderBuilder: Recalculating top product ranking. PopularityVersion:", popularityVersion);
+    const popularityMap = calculatePopularity();
+    const sortedByPopularity = Array.from(popularityMap.entries())
+      .sort(([, countA], [, countB]) => countB - countA); // Sort descending by count
+
+    const ranking = new Map<string, number>();
+    sortedByPopularity.slice(0, 3).forEach(([productId], index) => {
+      ranking.set(productId, index + 1); // Rank 1, 2, 3
+    });
+    console.log("OrderBuilder: Top product ranking calculated:", ranking);
+    return ranking;
+  }, [isClient, popularityVersion]); // Depends only on client status and popularity updates
+
+
   // Memoize filtered and sorted products
   const filteredAndSortedProducts = useMemo(() => {
     if (!isClient) return []; // Return empty array on server
@@ -227,26 +269,7 @@ export function OrderBuilder() {
         break;
       case 'popularity-desc': {
         console.log("OrderBuilder: Sorting by popularity.");
-        const popularityMap = new Map<string, number>();
-        try {
-          const storedOrders = localStorage.getItem('coffeeOrders');
-          if (storedOrders) {
-            const pastOrders: Order[] = JSON.parse(storedOrders);
-            if (Array.isArray(pastOrders)) {
-              pastOrders.forEach(ord => {
-                ord.items.forEach(item => {
-                  popularityMap.set(item.id, (popularityMap.get(item.id) || 0) + item.quantity);
-                });
-              });
-               console.log("OrderBuilder: Popularity map calculated:", Object.fromEntries(popularityMap));
-            } else {
-               console.warn("OrderBuilder: Invalid order data found in localStorage for popularity sort.");
-            }
-          }
-        } catch (e) {
-          console.error("Error reading or parsing sales history for sorting:", e);
-          // Proceed without popularity data if error occurs
-        }
+        const popularityMap = calculatePopularity(); // Use the helper function
         // Sort primarily by popularity (desc), secondarily by name (asc) for tie-breaking
         result.sort((a, b) => {
            const popDiff = (popularityMap.get(b.id) || 0) - (popularityMap.get(a.id) || 0);
@@ -628,6 +651,7 @@ export function OrderBuilder() {
                  onAddToOrder={addToOrder}
                  onRemoveFromOrder={removeFromOrder} // Pass the remove function
                  orderQuantity={orderQuantities[product.id]} // Pass the quantity from memoized map
+                 popularityRank={topProductsRanking.get(product.id)} // Pass the rank
              />
           ))}
         </div>
@@ -667,6 +691,11 @@ export function OrderBuilder() {
                     </SheetHeader>
                     {/* OrderDetails renders content and footer */}
                     <OrderDetails isSheet={true} />
+                    <SheetClose asChild>
+                        <VisuallyHidden>
+                          <button>Закрыть</button>
+                        </VisuallyHidden>
+                     </SheetClose>
 
               </SheetContent>
             </Sheet>
@@ -693,4 +722,4 @@ export function OrderBuilder() {
   );
 }
 
-
+    

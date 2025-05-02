@@ -64,6 +64,32 @@ type ProductFormData = z.infer<typeof productSchema>;
 type SortOption = 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc' | 'popularity-desc'; // Removed 'default', name-asc is now the implicit default
 const SORT_STORAGE_KEY = 'productMgmtSortOption'; // Key for localStorage
 
+
+// Helper function to calculate product popularity
+const calculatePopularity = (): Map<string, number> => {
+  const popularityMap = new Map<string, number>();
+  try {
+    const storedOrders = localStorage.getItem('coffeeOrders');
+    if (storedOrders) {
+      const pastOrders: Order[] = JSON.parse(storedOrders);
+      if (Array.isArray(pastOrders)) {
+        pastOrders.forEach(ord => {
+          ord.items.forEach(item => {
+            popularityMap.set(item.id, (popularityMap.get(item.id) || 0) + item.quantity);
+          });
+        });
+        console.log("Popularity map calculated:", Object.fromEntries(popularityMap));
+      } else {
+         console.warn("Invalid order data found in localStorage for popularity.");
+      }
+    }
+  } catch (e) {
+    console.error("Error reading or parsing sales history for popularity:", e);
+  }
+  return popularityMap;
+};
+
+
 export function ProductManagement() {
   const [products, setProducts] = useState<Product[]>([]);
   const [searchTerm, setSearchTerm] = useState<string>(""); // State for search term
@@ -137,6 +163,7 @@ export function ProductManagement() {
         } else {
             console.log("ProductManagement: No valid sort option found in localStorage, using default.");
             // Keep default 'name-asc'
+             localStorage.setItem(SORT_STORAGE_KEY, 'name-asc'); // Persist the default
         }
 
     } catch (lsError) {
@@ -159,8 +186,8 @@ export function ProductManagement() {
 
      // Listener for coffeeOrders changes to update popularity sort
      const handleOrderStorageChange = (event: StorageEvent) => {
-        if (event.key === "coffeeOrders" && sortOption === 'popularity-desc') {
-            console.log("ProductManagement: Detected order change, refreshing popularity sort.");
+        if (event.key === "coffeeOrders") { // Removed check for sortOption, always refresh version
+            console.log("ProductManagement: Detected order change, refreshing popularity version.");
             setPopularityVersion(v => v + 1); // Trigger recalculation
         }
      };
@@ -221,6 +248,23 @@ export function ProductManagement() {
         }
     };
 
+  // Memoize popularity ranking
+  const topProductsRanking = useMemo(() => {
+    if (!isClient) return new Map<string, number>();
+
+    console.log("ProductManagement: Recalculating top product ranking. PopularityVersion:", popularityVersion);
+    const popularityMap = calculatePopularity();
+    const sortedByPopularity = Array.from(popularityMap.entries())
+      .sort(([, countA], [, countB]) => countB - countA); // Sort descending by count
+
+    const ranking = new Map<string, number>();
+    sortedByPopularity.slice(0, 3).forEach(([productId], index) => {
+      ranking.set(productId, index + 1); // Rank 1, 2, 3
+    });
+    console.log("ProductManagement: Top product ranking calculated:", ranking);
+    return ranking;
+  }, [isClient, popularityVersion]); // Depends only on client status and popularity updates
+
 
   // Filter and sort products based on search term and sort option
   const filteredAndSortedProducts = useMemo(() => {
@@ -253,31 +297,15 @@ export function ProductManagement() {
          break;
        case 'popularity-desc': {
         console.log("ProductManagement: Sorting by popularity.");
-        const popularityMap = new Map<string, number>();
-        try {
-          const storedOrders = localStorage.getItem('coffeeOrders');
-          if (storedOrders) {
-            const pastOrders: Order[] = JSON.parse(storedOrders);
-             if (Array.isArray(pastOrders)) {
-                pastOrders.forEach(ord => {
-                    ord.items.forEach(item => {
-                    popularityMap.set(item.id, (popularityMap.get(item.id) || 0) + item.quantity);
-                    });
-                });
-                 console.log("ProductManagement: Popularity map calculated:", Object.fromEntries(popularityMap));
-             }
-          }
-        } catch (e) {
-          console.error("Error reading or parsing sales history for sorting:", e);
-          // Proceed without popularity data if error occurs
-        }
-        result.sort((a, b) => (popularityMap.get(b.id) || 0) - (popularityMap.get(a.id) || 0));
+        const popularityMap = calculatePopularity(); // Use helper
+        result.sort((a, b) => {
+            const popDiff = (popularityMap.get(b.id) || 0) - (popularityMap.get(a.id) || 0);
+            if (popDiff !== 0) return popDiff;
+            return a.name.localeCompare(b.name); // Tie-breaker
+        });
         break;
        }
-       default: // Should technically not happen with the new SortOption type
-          // Fallback to name-asc if something goes wrong or state is invalid
-         result.sort((a, b) => a.name.localeCompare(b.name));
-         break;
+       // No default needed as 'name-asc' is the default state
      }
 
     return result;
@@ -617,6 +645,7 @@ export function ProductManagement() {
                       onCancelEditing={cancelEditing}
                       onEditSubmit={onEditSubmit}
                       onRemoveProduct={removeProduct}
+                      popularityRank={topProductsRanking.get(product.id)} // Pass the rank
                    />
                 ))}
               </ul>
@@ -628,3 +657,4 @@ export function ProductManagement() {
   );
 }
 
+    
