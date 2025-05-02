@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
@@ -37,7 +38,7 @@ export function OrderBuilder() {
   const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
   const [isSheetOpen, setIsSheetOpen] = useState(false); // State for mobile sheet
-  const sheetTitleId = React.useId(); // Generate a unique ID for the sheet title
+  // Removed useId for sheet title as we'll use explicit SheetTitle now
 
   useEffect(() => {
     setIsClient(true);
@@ -258,11 +259,10 @@ export function OrderBuilder() {
     // Component to render the order details (used in both Sheet and desktop Card)
     const OrderDetails = ({ isSheet = false }: { isSheet?: boolean }) => (
         <>
-          {/* Header remains part of OrderDetails, gets ID when in sheet */}
+          {/* Visible Title for Desktop, remains part of OrderDetails */}
           <CardHeader className={cn("p-3 md:p-4 flex-shrink-0", isSheet ? "pb-2" : "pb-3")}>
             <CardTitle
-              id={isSheet ? sheetTitleId : undefined} // Assign ID only for the sheet
-              className={cn("text-lg flex items-center justify-between", isSheet ? "" : "text-xl")}
+              className={cn("text-lg flex items-center justify-between", isSheet ? "sr-only" : "text-xl")} // Hide visually on sheet
             >
               <span>Текущий заказ</span>
              </CardTitle>
@@ -479,12 +479,15 @@ export function OrderBuilder() {
                      )}
                    </Button>
               </SheetTrigger>
-              {/* Add aria-labelledby referencing the title inside OrderDetails */}
               <SheetContent
                  side="bottom"
                  className="rounded-t-lg h-[75vh] flex flex-col p-0"
-                 aria-labelledby={sheetTitleId} // Link to the title ID
+                 // aria-labelledby removed, using explicit SheetTitle now
               >
+                  {/* Add a visually hidden title for accessibility */}
+                  <SheetHeader className="sr-only">
+                    <SheetTitle>Текущий заказ</SheetTitle>
+                  </SheetHeader>
                   <OrderDetails isSheet={true} />
               </SheetContent>
             </Sheet>
@@ -502,3 +505,4 @@ export function OrderBuilder() {
     </div>
   );
 }
+
