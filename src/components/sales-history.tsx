@@ -436,21 +436,12 @@ export function SalesHistory() {
 
                {/* Clear All History Button */}
                <AlertDialog open={isClearHistoryDialogOpen} onOpenChange={setIsClearHistoryDialogOpen}>
-                   <TooltipProvider>
-                       <Tooltip>
-                           <TooltipTrigger asChild>
-                               <AlertDialogTrigger asChild>
-                                   <Button variant="destructive" size="icon" className="h-9 w-9 md:h-10 md:w-10" disabled={orders.length === 0}>
-                                       <Trash className="h-4 w-4" />
-                                       <span className="sr-only">Очистить всю историю</span>
-                                   </Button>
-                               </AlertDialogTrigger>
-                           </TooltipTrigger>
-                           <TooltipContent>
-                               <p>Очистить всю историю</p>
-                           </TooltipContent>
-                       </Tooltip>
-                   </TooltipProvider>
+                   <AlertDialogTrigger asChild>
+                      <Button variant="destructive" size="sm" className="h-9 md:h-10 text-xs md:text-sm px-3" disabled={orders.length === 0}>
+                          <Trash className="mr-1.5 h-3.5 w-3.5" /> {/* Adjusted margin/size */}
+                          Удалить историю
+                      </Button>
+                   </AlertDialogTrigger>
                    <AlertDialogContent>
                        <AlertDialogHeader>
                            <AlertDialogTitle>Вы уверены?</AlertDialogTitle>
