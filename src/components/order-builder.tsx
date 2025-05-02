@@ -445,7 +445,7 @@ export function OrderBuilder() {
                    >
                      <div className="flex-grow overflow-hidden mr-1">
                        <span className="font-medium block truncate">{item.name} {item.volume && <span className="text-xs text-muted-foreground">({item.volume})</span>}</span>
-                        <span className="font-mono text-xs md:text-sm whitespace-nowrap">{(item.price * item.quantity).toFixed(0)} ₽</span>
+                        <span className=" text-xs md:text-sm whitespace-nowrap">{(item.price * item.quantity).toFixed(0)} ₽</span>
                      </div>
                      <div className="flex items-center gap-1 md:gap-1 flex-shrink-0">
                         <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7" onClick={() => removeFromOrder(item.id)}>

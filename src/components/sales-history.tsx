@@ -519,7 +519,7 @@ export function SalesHistory() {
                             <span className="md:hidden text-muted-foreground">{/* Empty on mobile to save space, icon is enough */}</span>
                         </div>
                     </TableCell>
-                    <TableCell className="text-right font-mono text-xs md:text-sm px-2 md:px-4 py-2 md:py-3 align-top whitespace-nowrap"> {/* Adjusted padding, Added whitespace-nowrap */}
+                    <TableCell className="text-right text-xs md:text-sm px-2 md:px-4 py-2 md:py-3 align-top whitespace-nowrap"> {/* Adjusted padding, Added whitespace-nowrap */}
                       {formatCurrency(order.totalPrice)}
                     </TableCell>
                     <TableCell className="text-right px-2 md:px-4 py-2 md:py-3 align-top whitespace-nowrap"> {/* Cell for delete button, Added whitespace-nowrap */}
