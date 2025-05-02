@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import type { Product } from "@/types/product";
-import { PlusCircle, Edit, Trash2, Save, X, FilePlus2, Search } from "lucide-react"; // Added icons, including Search
+import { PlusCircle, Edit, Trash2, Save, X, FilePlus2, Search, Trash } from "lucide-react"; // Added Trash icon
 import Image from "next/image";
 import { getRawProductData } from "@/lib/product-defaults"; // Import defaults and raw data getter
 import {
@@ -57,6 +57,7 @@ export function ProductManagement() {
   const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false); // State for delete all dialog
 
   const form = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
@@ -219,6 +220,22 @@ export function ProductManagement() {
     }
   };
 
+   // Function to clear all products
+   const clearAllProducts = () => {
+     if (!isClient) return;
+     setProducts([]);
+     setIsDeleteDialogOpen(false); // Close the dialog
+     // Use setTimeout for toast
+     setTimeout(() => {
+        toast({
+            title: "Все товары удалены",
+            description: "Список товаров был очищен.",
+            variant: "destructive",
+        });
+     }, 0);
+   };
+
+
   const startEditing = (product: Product) => {
     setEditingProductId(product.id);
     editForm.reset({
@@ -368,19 +385,54 @@ export function ProductManagement() {
        <Card className="shadow-md flex flex-col h-full"> {/* Ensure card takes full height */}
         <CardHeader className="flex flex-row items-center justify-between pb-4"> {/* Added pb-4 */}
           <CardTitle className="text-lg md:text-xl">Существующие товары</CardTitle>
-           <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                 <Button variant="outline" size="icon" onClick={loadRawProducts} className="h-8 w-8"> {/* Changed to icon button */}
-                   <FilePlus2 className="h-4 w-4" /> {/* Removed text and mr-1 */}
-                   <span className="sr-only">Загрузить пример товаров</span>
-                 </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Загрузить пример товаров</p>
-              </TooltipContent>
-            </Tooltip>
-           </TooltipProvider>
+           <div className="flex gap-2"> {/* Wrapper for the buttons */}
+                <TooltipProvider>
+                    <Tooltip>
+                    <TooltipTrigger asChild>
+                        <Button variant="outline" size="icon" onClick={loadRawProducts} className="h-8 w-8">
+                        <FilePlus2 className="h-4 w-4" />
+                        <span className="sr-only">Загрузить пример товаров</span>
+                        </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                        <p>Загрузить пример товаров</p>
+                    </TooltipContent>
+                    </Tooltip>
+                </TooltipProvider>
+
+                 {/* Delete All Products Button */}
+                 <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+                    <TooltipProvider>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <AlertDialogTrigger asChild>
+                                    <Button variant="destructive" size="icon" className="h-8 w-8" disabled={products.length === 0}>
+                                        <Trash className="h-4 w-4" />
+                                        <span className="sr-only">Удалить все товары</span>
+                                    </Button>
+                                </AlertDialogTrigger>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                <p>Удалить все товары</p>
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                        <AlertDialogTitle>Вы уверены?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Это действие необратимо. Все товары будут удалены навсегда из списка.
+                        </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                        <AlertDialogCancel className="text-xs px-3 h-9">Отмена</AlertDialogCancel>
+                        <AlertDialogAction onClick={clearAllProducts} className={buttonVariants({ variant: "destructive", size:"sm", className:"text-xs px-3 h-9" })}>
+                            Удалить все
+                        </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+            </div>
         </CardHeader>
         <CardContent className="flex-grow overflow-hidden p-0"> {/* Remove padding, let ScrollArea handle it */}
             {/* Search Input for Existing Products */}
@@ -485,3 +537,4 @@ export function ProductManagement() {
     </div>
   );
 }
+
