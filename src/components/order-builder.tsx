@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
@@ -165,7 +164,7 @@ export function OrderBuilder() {
       }
     });
      // Open sheet on mobile when first item is added
-     if (order.length === 0 && !isSheetOpen) {
+     if (order.length === 0 && !isSheetOpen && window.innerWidth < 1024) { // Check screen size
         setIsSheetOpen(true);
      }
   };
@@ -448,22 +447,27 @@ export function OrderBuilder() {
          )}
       </div>
 
-       {/* Mobile Order Sheet Trigger */}
-        <div className="lg:hidden fixed bottom-4 right-4 z-30">
+       {/* Mobile Order Sheet Trigger - Full Width Button */}
+        <div className="lg:hidden fixed bottom-0 left-0 right-0 z-30 p-2 bg-background border-t">
             <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
               <SheetTrigger asChild>
-                  <Button size="icon" className="rounded-full w-14 h-14 shadow-lg">
-                    <ShoppingCart className="h-6 w-6" />
-                     {order.length > 0 && (
-                        <Badge
-                          variant="destructive"
-                          className="absolute -top-1 -right-1 h-5 w-5 justify-center p-0"
-                        >
-                          {order.reduce((sum, item) => sum + item.quantity, 0)}
-                        </Badge>
-                      )}
-                    <span className="sr-only">Открыть корзину</span>
-                  </Button>
+                   <Button className="w-full h-12 shadow-lg text-base flex items-center justify-between">
+                     <div className="flex items-center gap-2">
+                        <ShoppingCart className="h-5 w-5" />
+                        {order.length > 0 && (
+                            <Badge
+                              variant="secondary" // Use secondary for less distraction
+                              className="h-5 w-auto px-1.5 justify-center text-xs font-medium"
+                            >
+                              {order.reduce((sum, item) => sum + item.quantity, 0)} поз.
+                            </Badge>
+                          )}
+                        <span>Корзина</span>
+                     </div>
+                     {totalPrice > 0 && (
+                        <span className="font-semibold">{totalPrice.toFixed(0)} ₽</span>
+                     )}
+                   </Button>
               </SheetTrigger>
               <SheetContent side="bottom" className="rounded-t-lg h-[80vh] flex flex-col p-0"> {/* Adjust height and padding */}
                   <OrderDetails isSheet={true} />
@@ -482,5 +486,3 @@ export function OrderBuilder() {
     </div>
   );
 }
-
-    
