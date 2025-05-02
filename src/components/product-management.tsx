@@ -362,21 +362,24 @@ export function ProductManagement() {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
        {/* Add Product Form */}
-      <Card className="shadow-md">
+      <Card className="shadow-md flex flex-col"> {/* Added flex flex-col */}
         <CardHeader>
           <CardTitle className="flex items-center text-lg md:text-xl">
              <PlusCircle className="h-5 w-5 mr-2 text-primary" /> Добавить новый товар
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex-grow"> {/* Added flex-grow */}
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <FormField control={form.control} name="name" render={({ field }) => ( <FormItem><FormLabel>Название</FormLabel><FormControl><Input placeholder="например, Латте" {...field} /></FormControl><FormMessage /></FormItem> )} />
-              <FormField control={form.control} name="volume" render={({ field }) => ( <FormItem><FormLabel>Объём (необязательно)</FormLabel><FormControl><Input placeholder="например, 0,3 л" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem> )} />
-              <FormField control={form.control} name="price" render={({ field }) => ( <FormItem><FormLabel>Цена (₽)</FormLabel><FormControl><Input type="text" inputMode="numeric" pattern="[0-9]*([\.,][0-9]+)?" placeholder="например, 165" {...field} /></FormControl><FormMessage /></FormItem> )} />
-              <FormField control={form.control} name="imageUrl" render={({ field }) => ( <FormItem><FormLabel>URL изображения (необязательно)</FormLabel><FormControl><Input placeholder="https://..." {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem> )} />
-              <FormField control={form.control} name="dataAiHint" render={({ field }) => ( <FormItem><FormLabel>Подсказка изображения (необязательно)</FormLabel><FormControl><Input placeholder="например, латте арт" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem> )} />
-              <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-sm px-3">Добавить товар</Button> {/* Adjusted text size and padding */}
+             {/* Form content wrapper */}
+            <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col h-full"> {/* Added flex flex-col h-full */}
+               <div className="space-y-4 flex-grow"> {/* Added flex-grow */}
+                    <FormField control={form.control} name="name" render={({ field }) => ( <FormItem><FormLabel>Название</FormLabel><FormControl><Input placeholder="например, Латте" {...field} /></FormControl><FormMessage /></FormItem> )} />
+                    <FormField control={form.control} name="volume" render={({ field }) => ( <FormItem><FormLabel>Объём (необязательно)</FormLabel><FormControl><Input placeholder="например, 0,3 л" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem> )} />
+                    <FormField control={form.control} name="price" render={({ field }) => ( <FormItem><FormLabel>Цена (₽)</FormLabel><FormControl><Input type="text" inputMode="numeric" pattern="[0-9]*([\.,][0-9]+)?" placeholder="например, 165" {...field} /></FormControl><FormMessage /></FormItem> )} />
+                    <FormField control={form.control} name="imageUrl" render={({ field }) => ( <FormItem><FormLabel>URL изображения (необязательно)</FormLabel><FormControl><Input placeholder="https://..." {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem> )} />
+                    <FormField control={form.control} name="dataAiHint" render={({ field }) => ( <FormItem><FormLabel>Подсказка изображения (необязательно)</FormLabel><FormControl><Input placeholder="например, латте арт" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem> )} />
+                </div>
+                 <Button type="submit" className="w-full mt-auto bg-accent hover:bg-accent/90 text-sm px-3">Добавить товар</Button> {/* Moved button outside the flex-grow div */}
             </form>
           </Form>
         </CardContent>
@@ -485,3 +488,4 @@ export function ProductManagement() {
     </div>
   );
 }
+
