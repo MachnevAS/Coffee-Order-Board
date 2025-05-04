@@ -32,9 +32,12 @@ const nextConfig: NextConfig = {
   },
   // Add environment variables for Google Sheets API
   env: {
-    GOOGLE_SHEETS_API_KEY: process.env.GOOGLE_SHEETS_API_KEY,
+    GOOGLE_SHEETS_API_KEY: process.env.GOOGLE_SHEETS_API_KEY, // Keep API key for read access if desired, but Service Account will be primary for writes
     GOOGLE_SHEET_ID: process.env.GOOGLE_SHEET_ID,
     GOOGLE_SHEET_NAME: process.env.GOOGLE_SHEET_NAME,
+    // Add Service Account credentials
+    GOOGLE_SERVICE_ACCOUNT_EMAIL: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+    GOOGLE_PRIVATE_KEY: process.env.GOOGLE_PRIVATE_KEY,
   },
 };
 
