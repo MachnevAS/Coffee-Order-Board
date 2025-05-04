@@ -1,4 +1,4 @@
-import { getIronSession, IronSessionData } from 'iron-session';
+import { getIronSession, IronSession, IronSessionData } from 'iron-session';
 import { cookies } from 'next/headers';
 import type { User } from '@/types/user';
 
@@ -18,9 +18,11 @@ export const sessionOptions = {
   },
 };
 
-export function session() {
+// Make the session function async
+export async function session(): Promise<IronSession<IronSessionData>> {
     if (!process.env.IRON_SESSION_PASSWORD) {
         throw new Error("IRON_SESSION_PASSWORD environment variable is not set.");
     }
+    // getIronSession returns a Promise, so we need to await it
     return getIronSession<IronSessionData>(cookies(), sessionOptions);
 }

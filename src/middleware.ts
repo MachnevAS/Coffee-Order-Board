@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { session } from './lib/session';
+import type { User } from '@/types/user'; // Import User type
 
 // Define public routes (accessible without authentication)
 const publicRoutes = ['/login'];
@@ -12,8 +13,8 @@ export async function middleware(request: NextRequest) {
   const isPublicRoute = publicRoutes.includes(pathname);
 
   // Get session data
-  const currentSession = session();
-  const user = currentSession.get('user');
+  const currentSession = await session(); // Await the session function
+  const user = currentSession.user; // Access user directly after awaiting session
 
   // Redirect authenticated users trying to access login page
   if (user && isPublicRoute) {
