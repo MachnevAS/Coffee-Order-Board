@@ -632,7 +632,7 @@ export function ProductManagement() {
       </Card>
 
       {/* Existing Products List */}
-      <Card className="shadow-md flex flex-col h-full">
+      <Card className="shadow-md flex flex-col h-[70vh]"> {/* Set max height */}
         <CardHeader className="flex flex-row items-center justify-between pb-4">
           <CardTitle className="text-lg md:text-xl">Существующие товары ({isLoading ? '...' : products.length})</CardTitle>
           <div className="flex gap-2">
@@ -761,3 +761,4 @@ export function ProductManagement() {
     </div>
   );
 }
+
