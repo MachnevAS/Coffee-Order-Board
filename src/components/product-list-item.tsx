@@ -22,24 +22,24 @@ import type { Product } from "@/types/product";
 import { Edit, Trash2, Save, X, Coffee } from "lucide-react";
 import type { UseFormReturn } from "react-hook-form";
 
-// Assuming ProductFormData is defined elsewhere or passed in
+// Assuming ProductFormData matches the management form schema
 type ProductFormData = {
   name: string;
   volume?: string;
-  price: number | undefined; // Allow undefined
+  price: number | undefined;
   imageUrl?: string;
   dataAiHint?: string;
 };
 
 interface ProductListItemProps {
-  product: Product;
+  product: Product; // Contains local ID
   isEditing: boolean;
-  editForm: UseFormReturn<ProductFormData>; // Pass the form instance
-  onStartEditing: (product: Product) => void;
+  editForm: UseFormReturn<ProductFormData>;
+  onStartEditing: (product: Product) => void; // Pass product with local ID
   onCancelEditing: () => void;
-  onEditSubmit: (data: ProductFormData) => void; // Pass the submit handler
-  onRemoveProduct: (id: string) => void;
-  popularityRank?: number; // Added for consistency, though not used visually here
+  onEditSubmit: (data: ProductFormData) => void;
+  onRemoveProduct: (product: Product) => void; // Pass the full product object
+  popularityRank?: number;
 }
 
 export function ProductListItem({
@@ -50,24 +50,27 @@ export function ProductListItem({
   onCancelEditing,
   onEditSubmit,
   onRemoveProduct,
-  popularityRank, // Receive prop
+  popularityRank,
 }: ProductListItemProps) {
   const [imgError, setImgError] = useState(false);
-  const imgSrc = product.imageUrl || `https://picsum.photos/100/100?random=${product.id}`;
+  // Use picsum as fallback only if imageUrl is truly missing/invalid after fetch
+  const imgSrc = !imgError && product.imageUrl ? product.imageUrl : `https://picsum.photos/100/80?random=${product.id}`;
+  const useFallbackIcon = imgError || !product.imageUrl;
 
   return (
     <li key={product.id} className="flex flex-col p-3 border rounded-md bg-card transition-colors duration-150">
       {isEditing ? (
         <Form {...editForm}>
           <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-3">
+             {/* Form fields remain the same */}
              <FormField control={editForm.control} name="name" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Название</FormLabel><FormControl><Input {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
              <FormField control={editForm.control} name="volume" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Объём</FormLabel><FormControl><Input {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
              <FormField control={editForm.control} name="price" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Цена (₽)</FormLabel><FormControl><Input type="text" inputMode="numeric" pattern="[0-9]*([\.,][0-9]+)?" {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
              <FormField control={editForm.control} name="imageUrl" render={({ field }) => ( <FormItem><FormLabel className="text-xs">URL изображения</FormLabel><FormControl><Input {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
              <FormField control={editForm.control} name="dataAiHint" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Подсказка ИИ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
              <div className="flex justify-end gap-2 pt-2">
-                  <Button type="button" variant="ghost" size="sm" onClick={onCancelEditing} className="text-xs px-2 h-8"><X className="h-4 w-4 mr-1" /> Отмена</Button> {/* Adjusted text size and padding */}
-                  <Button type="submit" size="sm" className="text-xs px-2 h-8"><Save className="h-4 w-4 mr-1" /> Сохранить</Button> {/* Adjusted text size and padding */}
+                  <Button type="button" variant="ghost" size="sm" onClick={onCancelEditing} className="text-xs px-2 h-8"><X className="h-4 w-4 mr-1" /> Отмена</Button>
+                  <Button type="submit" size="sm" className="text-xs px-2 h-8"><Save className="h-4 w-4 mr-1" /> Сохранить</Button>
              </div>
           </form>
         </Form>
@@ -75,18 +78,18 @@ export function ProductListItem({
         <div className="flex items-center justify-between gap-2">
            <div className="flex items-center gap-2 md:gap-3 overflow-hidden flex-grow">
              <div className="relative h-10 w-10 md:h-12 md:w-12 rounded-md overflow-hidden flex-shrink-0 bg-muted flex items-center justify-center">
-                  {imgError || !product.imageUrl ? (
-                    <Coffee className="h-6 w-6 text-muted-foreground/50" /> // Fallback icon
+                  {useFallbackIcon ? (
+                    <Coffee className="h-6 w-6 text-muted-foreground/50" />
                   ) : (
                      <Image
-                      src={imgSrc}
+                      src={imgSrc} // Already determined above
                       alt={product.name}
                       fill
                       style={{objectFit:"cover"}}
                       data-ai-hint={product.dataAiHint || 'кофе'}
                       sizes="40px md:48px"
-                      onError={() => setImgError(true)} // Set error state on failure
-                      unoptimized={imgSrc.includes('picsum.photos')} // Avoid optimizing picsum placeholders
+                      onError={() => setImgError(true)}
+                      unoptimized={imgSrc.includes('picsum.photos')}
                     />
                   )}
              </div>
@@ -94,7 +97,6 @@ export function ProductListItem({
             <div className="overflow-hidden flex-grow">
                 <p className="font-medium truncate text-sm md:text-base">{product.name}</p>
                 {(product.volume || product.price !== undefined) && (
-                    // Use font-sans for price/currency and handle undefined price
                     <p className="text-xs md:text-sm text-muted-foreground font-sans">
                         {product.volume && <span>{product.volume} / </span>}
                         {(product.price !== undefined ? product.price.toFixed(0) : 'N/A')} ₽
@@ -104,33 +106,17 @@ export function ProductListItem({
            </div>
 
           <div className="flex gap-1 flex-shrink-0">
+               {/* Edit button still uses local ID implicitly via onStartEditing */}
                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onStartEditing(product)}>
                  <Edit className="h-4 w-4" />
                  <span className="sr-only">Редактировать {product.name}</span>
                </Button>
 
-                <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10">
-                            <Trash2 className="h-4 w-4" />
-                            <span className="sr-only">Удалить {product.name}</span>
-                        </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                        <AlertDialogHeader>
-                        <AlertDialogTitle>Вы уверены?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            Это действие необратимо. Товар "{product.name} {product.volume || ''}" будет удален навсегда.
-                        </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                        <AlertDialogCancel className="text-xs px-3 h-9">Отмена</AlertDialogCancel> {/* Adjusted size */}
-                        <AlertDialogAction onClick={() => onRemoveProduct(product.id)} className={buttonVariants({ variant: "destructive", size:"sm", className:"text-xs px-3 h-9" })}> {/* Adjusted size */}
-                            Удалить
-                        </AlertDialogAction>
-                        </AlertDialogFooter>
-                    </AlertDialogContent>
-                </AlertDialog>
+               {/* Delete button now triggers handler with the full product object */}
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => onRemoveProduct(product)}>
+                    <Trash2 className="h-4 w-4" />
+                    <span className="sr-only">Удалить {product.name}</span>
+                </Button>
           </div>
         </div>
       )}

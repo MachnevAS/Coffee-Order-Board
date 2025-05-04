@@ -63,8 +63,9 @@ const generateHint = (name: string, volume?: string): string => {
 }
 
 
-// Define raw product data
+// Define raw product data (without ID)
 const rawProducts = [
+  // Copied from user request, volume '-' mapped to undefined
   { name: 'Капучино', volume: 0.2, price: 150, imageUrl: 'https://images.unsplash.com/photo-1517701550927-30cf4ba1dba5' },
   { name: 'Капучино', volume: 0.3, price: 185, imageUrl: 'https://images.pexels.com/photos/2396220/pexels-photo-2396220.jpeg' },
   { name: 'Капучино', volume: 0.4, price: 195, imageUrl: 'https://images.unsplash.com/photo-1587496679742-bad502958fbf' },
@@ -78,52 +79,49 @@ const rawProducts = [
   { name: 'Раф', volume: 0.2, price: 195, imageUrl: 'https://images.unsplash.com/photo-1615657203690-d7d2478b250a' },
   { name: 'Раф', volume: 0.3, price: 245, imageUrl: 'https://images.pexels.com/photos/8515553/pexels-photo-8515553.jpeg' },
   { name: 'Раф', volume: 0.4, price: 310, imageUrl: 'https://images.unsplash.com/photo-1612203985729-70726954388c' },
-  { name: 'Раф халва', volume: null, price: 285, imageUrl: 'https://images.pexels.com/photos/808941/pexels-photo-808941.jpeg' }, // Hint: halva coffee
+  { name: 'Раф халва', volume: null, price: 285, imageUrl: 'https://images.pexels.com/photos/808941/pexels-photo-808941.jpeg' },
   { name: 'Горячий шоколад', volume: 0.3, price: 205, imageUrl: 'https://images.unsplash.com/photo-1575380585122-4b1ade5d4f72' },
   { name: 'Горячий шоколад', volume: 0.5, price: 275, imageUrl: 'https://images.pexels.com/photos/6605313/pexels-photo-6605313.jpeg' },
   { name: 'Флэт Уайт', volume: null, price: 205, imageUrl: 'https://images.unsplash.com/photo-1597318181409-cf64d0b5d8a8' },
   { name: 'Моккачино', volume: null, price: 315, imageUrl: 'https://images.pexels.com/photos/4790100/pexels-photo-4790100.jpeg' },
-  { name: 'Чай', volume: 0.3, price: 110, imageUrl: 'https://images.unsplash.com/photo-1597318181409-cf64d0b5d8a8' }, // Reusing flat white img for tea 0.3? Might need update.
+  { name: 'Чай', volume: 0.3, price: 110, imageUrl: 'https://images.unsplash.com/photo-1597318181409-cf64d0b5d8a8' },
   { name: 'Чай', volume: 0.5, price: 190, imageUrl: 'https://images.pexels.com/photos/691114/pexels-photo-691114.jpeg' },
-  { name: 'Кофейный глинтвейн', volume: null, price: 195, imageUrl: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587' }, // Hint: coffee mulled wine non-alcoholic
+  { name: 'Кофейный глинтвейн', volume: null, price: 195, imageUrl: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587' },
   { name: 'Холодный кофе', volume: 0.3, price: 195, imageUrl: 'https://images.pexels.com/photos/302896/pexels-photo-302896.jpeg' },
   { name: 'Холодный кофе', volume: 0.5, price: 225, imageUrl: 'https://images.unsplash.com/photo-1551030173-122a2d6da306' },
   { name: 'Холодный американо', volume: null, price: 150, imageUrl: 'https://images.pexels.com/photos/8515555/pexels-photo-8515555.jpeg' },
-  { name: 'Кофе/тоник', volume: 0.3, price: 185, imageUrl: 'https://images.unsplash.com/photo-1580651210345-c640471c9a7e' }, // Hint: espresso tonic
-  { name: 'Кофе/тоник', volume: 0.5, price: 225, imageUrl: 'https://images.pexels.com/photos/8515559/pexels-photo-8515559.jpeg' }, // Hint: espresso tonic large
-  { name: 'Бамбл', volume: 0.3, price: 195, imageUrl: 'https://images.unsplash.com/photo-1572442388796-11668a67e53d' }, // Reusing latte img for bumble 0.3? Might need update. Hint: bumble coffee orange
-  { name: 'Бамбл', volume: 0.5, price: 235, imageUrl: 'https://images.pexels.com/photos/8515557/pexels-photo-8515557.jpeg' }, // Hint: bumble coffee orange large
-  { name: 'Сироп', volume: null, price: 50, imageUrl: 'https://images.pexels.com/photos/4706133/pexels-photo-4706133.jpeg' }, // Hint: coffee syrup bottle
-  { name: 'Молоко миндаль', volume: null, price: 60, imageUrl: 'https://images.unsplash.com/photo-1550583724-b2692b85b150' }, // Hint: almond milk carton
-  { name: 'Молоко кокос', volume: null, price: 60, imageUrl: 'https://images.unsplash.com/photo-1622921491195-9b833a3e1f6a' }, // Hint: coconut milk carton
-  { name: 'Молоко банан', volume: null, price: 60, imageUrl: 'https://images.pexels.com/photos/1092730/pexels-photo-1092730.jpeg' }, // Hint: banana milk carton
-  { name: 'Жвачка', volume: null, price: 60, imageUrl: 'https://images.unsplash.com/photo-1587135991058-88132bea1d5c' }, // Hint: chewing gum pack
-  { name: 'Кола', volume: null, price: 95, imageUrl: 'https://images.pexels.com/photos/50593/coca-cola-cold-drink-soft-drink-coke-50593.jpeg' }, // Hint: cola can bottle
-  { name: 'Батончик', volume: null, price: 145, imageUrl: 'https://images.unsplash.com/photo-1600956054489-a23507c64a10' }, // Hint: chocolate snack bar
-  { name: 'Мороженое', volume: null, price: 165, imageUrl: 'https://images.unsplash.com/photo-1576506295286-5cda18df43e7' }, // Hint: ice cream cone scoop
+  { name: 'Кофе/тоник', volume: 0.3, price: 185, imageUrl: 'https://images.unsplash.com/photo-1580651210345-c640471c9a7e' },
+  { name: 'Кофе/тоник', volume: 0.5, price: 225, imageUrl: 'https://images.pexels.com/photos/8515559/pexels-photo-8515559.jpeg' },
+  { name: 'Бамбл', volume: 0.3, price: 195, imageUrl: 'https://images.unsplash.com/photo-1572442388796-11668a67e53d' },
+  { name: 'Бамбл', volume: 0.5, price: 235, imageUrl: 'https://images.pexels.com/photos/8515557/pexels-photo-8515557.jpeg' },
+  { name: 'Сироп', volume: null, price: 50, imageUrl: 'https://images.pexels.com/photos/4706133/pexels-photo-4706133.jpeg' },
+  { name: 'Молоко миндаль', volume: null, price: 60, imageUrl: 'https://images.unsplash.com/photo-1550583724-b2692b85b150' },
+  { name: 'Молоко кокос', volume: null, price: 60, imageUrl: 'https://images.unsplash.com/photo-1622921491195-9b833a3e1f6a' },
+  { name: 'Молоко банан', volume: null, price: 60, imageUrl: 'https://images.pexels.com/photos/1092730/pexels-photo-1092730.jpeg' },
+  { name: 'Жвачка', volume: null, price: 60, imageUrl: 'https://images.unsplash.com/photo-1587135991058-88132bea1d5c' },
+  { name: 'Кола', volume: null, price: 95, imageUrl: 'https://images.pexels.com/photos/50593/coca-cola-cold-drink-soft-drink-coke-50593.jpeg' },
+  { name: 'Батончик', volume: null, price: 145, imageUrl: 'https://images.unsplash.com/photo-1600956054489-a23507c64a10' },
+  { name: 'Мороженое', volume: null, price: 165, imageUrl: 'https://images.unsplash.com/photo-1576506295286-5cda18df43e7' },
 ];
 
-// Returns the processed list of raw products with IDs, formatted volumes, and hints
-export const getRawProductData = (): Product[] => rawProducts.map((p, index) => {
+// Returns the processed list of raw products with formatted volumes and hints, but NO IDs
+// The ID is now generated locally in the service when fetching from the sheet.
+export const getRawProductData = (): Omit<Product, 'id'>[] => rawProducts.map((p) => {
   const formattedVolume = formatVolume(p.volume);
-   // Simple unique ID generation (consider more robust methods for production)
-   const idSuffix = p.name.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 5) + (formattedVolume ? formattedVolume.replace(/[^0-9]/g, '') : '') + index;
-   const id = `prod_${Date.now().toString().slice(-4)}_${idSuffix}`; // Add timestamp element
-
-   return {
-    id: id,
+  return {
+    // id: field removed
     name: p.name,
     volume: formattedVolume,
     price: p.price,
     // Use provided imageUrl, fallback to picsum only if it's missing/invalid
-    imageUrl: p.imageUrl && p.imageUrl.startsWith('http') ? p.imageUrl : `https://picsum.photos/100/80?random=${id}`, // Use smaller placeholder
+    imageUrl: p.imageUrl && p.imageUrl.startsWith('http') ? p.imageUrl : undefined, // Don't default to picsum here
     dataAiHint: generateHint(p.name, formattedVolume),
    };
 });
 
 
-// Now returns an empty array by default
+// Now returns an empty array by default, as data comes from Google Sheets
 export const getDefaultProducts = (): Product[] => {
-    console.log("getDefaultProducts called, returning empty array.");
+    console.log("getDefaultProducts called, returning empty array as data source is Google Sheets.");
     return [];
 };

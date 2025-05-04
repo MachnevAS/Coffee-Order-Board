@@ -44,8 +44,8 @@ interface OrderItem extends Product {
 
 type SortOption = 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc' | 'popularity-desc';
 
-// Helper function to calculate product popularity (remains using localStorage orders)
-const calculatePopularity = (): Map<string, number> => {
+// Helper function to calculate product popularity using Name|Volume key
+const calculatePopularityNameVolumeMap = (): Map<string, number> => {
   const popularityMap = new Map<string, number>();
   try {
     const storedOrders = localStorage.getItem(LOCAL_STORAGE_ORDERS_KEY);
@@ -54,7 +54,9 @@ const calculatePopularity = (): Map<string, number> => {
       if (Array.isArray(pastOrders)) {
         pastOrders.forEach(ord => {
           ord.items.forEach(item => {
-            popularityMap.set(item.id, (popularityMap.get(item.id) || 0) + item.quantity);
+            // Use Name|Volume as the key
+            const key = `${item.name}|${item.volume ?? ''}`;
+            popularityMap.set(key, (popularityMap.get(key) || 0) + item.quantity);
           });
         });
       } else {
@@ -67,17 +69,29 @@ const calculatePopularity = (): Map<string, number> => {
   return popularityMap;
 };
 
+// Helper to map popularity from Name|Volume key back to local product ID
+const mapPopularityToProductId = (products: Product[], popularityMap: Map<string, number>): Map<string, number> => {
+    const productIdPopularityMap = new Map<string, number>();
+    products.forEach(product => {
+        const key = `${product.name}|${product.volume ?? ''}`;
+        if (popularityMap.has(key)) {
+            productIdPopularityMap.set(product.id, popularityMap.get(key)!);
+        }
+    });
+    return productIdPopularityMap;
+};
+
+
 // Extracted Product Grid Component
 const ProductGrid: React.FC<{
   products: Product[];
-  orderQuantities: { [productId: string]: number };
-  topProductsRanking: Map<string, number>;
-  onAddToOrder: (product: Product) => void;
-  onRemoveFromOrder: (productId: string) => void;
-  isLoading?: boolean; // Add isLoading prop
+  orderQuantities: { [productId: string]: number }; // Use local ID as key
+  topProductsRanking: Map<string, number>; // Use local ID as key
+  onAddToOrder: (product: Product) => void; // Pass full product with local ID
+  onRemoveFromOrder: (productId: string) => void; // Pass local ID
+  isLoading?: boolean;
 }> = ({ products, orderQuantities, topProductsRanking, onAddToOrder, onRemoveFromOrder, isLoading }) => {
   if (isLoading) {
-    // Optionally show a loading skeleton or message
     return <p className="text-muted-foreground">Загрузка товаров...</p>;
   }
   if (products.length === 0) {
@@ -88,12 +102,12 @@ const ProductGrid: React.FC<{
     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 gap-2 md:gap-3">
       {products.map((product) => (
         <ProductCard
-          key={product.id}
+          key={product.id} // Use local ID as key
           product={product}
           onAddToOrder={onAddToOrder}
-          onRemoveFromOrder={onRemoveFromOrder}
-          orderQuantity={orderQuantities[product.id]}
-          popularityRank={topProductsRanking.get(product.id)}
+          onRemoveFromOrder={onRemoveFromOrder} // Pass local ID remove handler
+          orderQuantity={orderQuantities[product.id]} // Use local ID for quantity lookup
+          popularityRank={topProductsRanking.get(product.id)} // Use local ID for rank lookup
         />
       ))}
     </div>
@@ -102,12 +116,12 @@ const ProductGrid: React.FC<{
 
 // Extracted Order Details Component
 const OrderDetails: React.FC<{
-  order: OrderItem[];
+  order: OrderItem[]; // Contains products with local IDs
   totalPrice: number;
   selectedPaymentMethod: PaymentMethod | null;
-  onRemoveFromOrder: (productId: string) => void;
-  onAddToOrder: (product: Product) => void;
-  onRemoveEntireItem: (productId: string) => void;
+  onRemoveFromOrder: (productId: string) => void; // Pass local ID
+  onAddToOrder: (product: Product) => void; // Pass full product with local ID
+  onRemoveEntireItem: (productId: string) => void; // Pass local ID
   onSelectPaymentMethod: (method: PaymentMethod) => void;
   onCheckout: () => void;
   onClearOrder: () => void;
@@ -129,43 +143,42 @@ const OrderDetails: React.FC<{
   orderSheetTitleId,
 }) => (
   <>
-    {/* Content Area with Scroll */}
     <CardContent className={cn(
-      "p-0 flex-grow overflow-hidden min-h-0", // Added min-h-0
-      isSheet ? "px-3 md:px-4" : "px-4 pt-0" // No pt-0 for card view, use CardHeader padding
+      "p-0 flex-grow overflow-hidden min-h-0",
+      isSheet ? "px-3 md:px-4" : "px-4 pt-0"
     )}>
-       {/* Explicitly set overflow-y-auto */}
        <ScrollArea className={cn("h-full pr-2 overflow-y-auto", isSheet ? "" : "lg:max-h-[calc(100vh-20rem)]")} type="auto">
          {order.length === 0 ? (
            <p className="text-muted-foreground text-center py-3 md:py-4 text-sm">Ваш заказ пуст.</p>
          ) : (
-           <ul className="space-y-1 md:space-y-1.5 pt-1 pb-2 md:pb-3"> {/* Adjusted padding */}
+           <ul className="space-y-1 md:space-y-1.5 pt-1 pb-2 md:pb-3">
              {order.map((item, index) => (
                <li
-                 key={item.id}
+                 key={item.id} // Use local ID as key
                  className={cn(
                    "flex justify-between items-center text-sm gap-2 py-1 px-1 rounded-sm",
-                   (index % 2 !== 0 ? 'bg-muted/50' : 'bg-card') // Add zebra striping
+                   (index % 2 !== 0 ? 'bg-muted/50' : 'bg-card')
                  )}
                >
                  <div className="flex-grow overflow-hidden mr-1">
                    <span className="font-medium block truncate">{item.name} {item.volume && <span className="text-xs text-muted-foreground">({item.volume})</span>}</span>
-                   {/* Use font-sans for currency */}
                    <span className=" text-xs md:text-sm whitespace-nowrap font-sans">{(item.price ?? 0 * item.quantity).toFixed(0)} ₽</span>
                  </div>
                  <div className="flex items-center gap-1 md:gap-1 flex-shrink-0">
+                   {/* Use local ID for handlers */}
                    <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7" onClick={() => onRemoveFromOrder(item.id)}>
                      <MinusCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
                      <span className="sr-only">Убрать 1 {item.name}</span>
                    </Button>
-                   {/* Use font-sans for quantity */}
                    <Badge variant="secondary" className="px-1.5 py-0.5 text-xs md:text-sm font-medium min-w-[24px] justify-center font-sans">
                      {item.quantity}
                    </Badge>
+                   {/* Pass full item (with local ID) to addToOrder */}
                    <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7" onClick={() => onAddToOrder(item)}>
                      <PlusCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
                      <span className="sr-only">Добавить 1 {item.name}</span>
                    </Button>
+                   {/* Use local ID for removeEntireItem */}
                    <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7 text-destructive/80 hover:text-destructive hover:bg-destructive/10 ml-1" onClick={() => onRemoveEntireItem(item.id)}>
                      <Trash2 className="h-3.5 w-3.5" />
                      <span className="sr-only">Удалить {item.name} из заказа</span>
@@ -178,10 +191,9 @@ const OrderDetails: React.FC<{
        </ScrollArea>
     </CardContent>
 
-    {/* Footer */}
     <CardFooter className={cn(
       "flex flex-col gap-2 md:gap-3 p-3 md:p-4 pt-0 flex-shrink-0",
-      isSheet ? "border-t pt-3" : "pt-2" // Add pt-2 for card view
+      isSheet ? "border-t pt-3" : "pt-2"
     )}>
       {!isSheet && order.length > 0 && <Separator className="mb-3" />}
 
@@ -189,7 +201,6 @@ const OrderDetails: React.FC<{
         <>
           <div className="flex justify-between w-full font-semibold text-sm md:text-base">
             <span>Итого:</span>
-            {/* Use font-sans for currency */}
             <span className="font-sans">{totalPrice.toFixed(0)} ₽</span>
           </div>
 
@@ -239,15 +250,15 @@ const OrderDetails: React.FC<{
 
 export function OrderBuilder() {
   // --- States ---
-  const [products, setProducts] = useState<Product[]>([]);
-  const [order, setOrder] = useState<OrderItem[]>([]);
+  const [products, setProducts] = useState<Product[]>([]); // Holds products with local IDs
+  const [order, setOrder] = useState<OrderItem[]>([]); // Holds order items with local IDs
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [sortOption, setSortOption] = useState<SortOption>('name-asc');
   const [popularityVersion, setPopularityVersion] = useState<number>(0);
   const [isClient, setIsClient] = useState(false);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true); // Add loading state
+  const [isLoading, setIsLoading] = useState(true);
 
   // --- Hooks ---
   const { toast } = useToast();
@@ -258,12 +269,14 @@ export function OrderBuilder() {
   const loadProducts = useCallback(async (showLoading = true) => {
       if (showLoading) setIsLoading(true);
       try {
-          const fetchedProducts = await fetchProductsFromSheet();
+          const fetchedProducts = await fetchProductsFromSheet(); // Fetches products with local IDs
           setProducts(fetchedProducts);
-          // Reset order if products are reloaded (optional, but avoids inconsistencies)
+          // Update order items if product details changed (e.g., price)
           setOrder(prevOrder => {
               const updatedOrder = prevOrder.map(orderItem => {
+                  // Find the corresponding product in the newly fetched list using local ID
                   const updatedProduct = fetchedProducts.find(p => p.id === orderItem.id);
+                  // If found, update the order item; otherwise, remove it (product might have been deleted)
                   return updatedProduct ? { ...updatedProduct, quantity: orderItem.quantity } : null;
               }).filter(item => item !== null) as OrderItem[];
               return updatedOrder;
@@ -275,57 +288,45 @@ export function OrderBuilder() {
               description: "Не удалось получить список товаров из Google Sheets.",
               variant: "destructive",
           });
-          setProducts([]); // Clear products on error
+          setProducts([]);
           setOrder([]); // Clear order on error
       } finally {
           if (showLoading) setIsLoading(false);
       }
-  }, [toast]);
+  }, [toast]); // Include toast in dependencies
+
 
   // --- Effects ---
 
   // Initialize client state, load sort option, and initial products
   useEffect(() => {
     setIsClient(true);
-
+    // Load sort option
     try {
-        // Load sort option from localStorage
         const storedSortOption = localStorage.getItem(LOCAL_STORAGE_ORDER_BUILDER_SORT_KEY);
         if (storedSortOption && ['name-asc', 'name-desc', 'price-asc', 'price-desc', 'popularity-desc'].includes(storedSortOption)) {
             setSortOption(storedSortOption as SortOption);
         } else {
-            // Set default if not found or invalid
             localStorage.setItem(LOCAL_STORAGE_ORDER_BUILDER_SORT_KEY, 'name-asc');
             setSortOption('name-asc');
         }
-    } catch (lsError) {
-        console.error("OrderBuilder: Error accessing localStorage for sort option.", lsError);
-        // No toast here, less critical than data loading
-    }
+    } catch (lsError) { console.error("OrderBuilder: Error accessing localStorage for sort option.", lsError); }
 
-    // Load initial products
-    loadProducts();
+    loadProducts(); // Load initial products
 
     // Listener for order changes to update popularity
     const handleOrderStorageChange = (event: StorageEvent) => {
-      if (event.key === LOCAL_STORAGE_ORDERS_KEY) {
-        setPopularityVersion(v => v + 1);
-      }
+      if (event.key === LOCAL_STORAGE_ORDERS_KEY) { setPopularityVersion(v => v + 1); }
     };
     window.addEventListener('storage', handleOrderStorageChange);
-    return () => {
-      window.removeEventListener('storage', handleOrderStorageChange);
-    };
-  }, [loadProducts]); // Load products on initial mount
+    return () => window.removeEventListener('storage', handleOrderStorageChange);
+  }, [loadProducts]); // Dependency on loadProducts
 
-  // Persist sort option to localStorage
+  // Persist sort option
   useEffect(() => {
     if (isClient) {
-      try {
-        localStorage.setItem(LOCAL_STORAGE_ORDER_BUILDER_SORT_KEY, sortOption);
-      } catch (e) {
-        console.error("OrderBuilder: Failed to save sort option to localStorage.", e);
-      }
+      try { localStorage.setItem(LOCAL_STORAGE_ORDER_BUILDER_SORT_KEY, sortOption); }
+      catch (e) { console.error("OrderBuilder: Failed to save sort option to localStorage.", e); }
     }
   }, [sortOption, isClient]);
 
@@ -339,55 +340,59 @@ export function OrderBuilder() {
 
   // --- Memoized calculations ---
 
+  // Calculate popularity map using Name|Volume keys
+  const popularityNameVolumeMap = useMemo(() => {
+      if (!isClient) return new Map<string, number>();
+      return calculatePopularityNameVolumeMap();
+  }, [isClient, popularityVersion]);
+
+  // Map popularity to local product IDs and get ranking
   const topProductsRanking = useMemo(() => {
     if (!isClient) return new Map<string, number>();
-    const popularityMap = calculatePopularity();
-    const sortedByPopularity = Array.from(popularityMap.entries())
+    const productIdPopularityMap = mapPopularityToProductId(products, popularityNameVolumeMap);
+    const sortedByPopularity = Array.from(productIdPopularityMap.entries())
       .sort(([, countA], [, countB]) => countB - countA);
     const ranking = new Map<string, number>();
     sortedByPopularity.slice(0, 3).forEach(([productId], index) => {
       ranking.set(productId, index + 1);
     });
     return ranking;
-  }, [isClient, popularityVersion]); // Depends on client and order changes
+  }, [products, popularityNameVolumeMap, isClient]);
 
+  // Filter and sort products based on local state
   const filteredAndSortedProducts = useMemo(() => {
     if (!isClient) return [];
     let result = [...products];
 
+    // Filter
     if (searchTerm) {
       const lowerCaseSearchTerm = searchTerm.toLowerCase();
       result = result.filter(product =>
-        product.name.toLowerCase().includes(lowerCaseSearchTerm)
+        product.name.toLowerCase().includes(lowerCaseSearchTerm) ||
+        product.volume?.toLowerCase().includes(lowerCaseSearchTerm)
       );
     }
 
+    // Sort
     switch (sortOption) {
-      case 'name-asc':
-        result.sort((a, b) => a.name.localeCompare(b.name));
-        break;
-      case 'name-desc':
-        result.sort((a, b) => b.name.localeCompare(a.name));
-        break;
-      case 'price-asc':
-        result.sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
-        break;
-      case 'price-desc':
-        result.sort((a, b) => (b.price ?? -Infinity) - (a.price ?? -Infinity));
-        break;
-      case 'popularity-desc': {
-        const popularityMap = calculatePopularity();
-        result.sort((a, b) => {
-          const popDiff = (popularityMap.get(b.id) || 0) - (popularityMap.get(a.id) || 0);
-          if (popDiff !== 0) return popDiff;
-          return a.name.localeCompare(b.name);
-        });
-        break;
-      }
+       case 'name-asc': result.sort((a, b) => a.name.localeCompare(b.name)); break;
+       case 'name-desc': result.sort((a, b) => b.name.localeCompare(a.name)); break;
+       case 'price-asc': result.sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity)); break;
+       case 'price-desc': result.sort((a, b) => (b.price ?? -Infinity) - (a.price ?? -Infinity)); break;
+       case 'popularity-desc': {
+         const productIdPopularityMap = mapPopularityToProductId(products, popularityNameVolumeMap);
+         result.sort((a, b) => {
+           const popDiff = (productIdPopularityMap.get(b.id) || 0) - (productIdPopularityMap.get(a.id) || 0);
+           if (popDiff !== 0) return popDiff;
+           return a.name.localeCompare(b.name); // Fallback sort by name
+         });
+         break;
+       }
     }
     return result;
-  }, [products, searchTerm, sortOption, isClient, popularityVersion]);
+  }, [products, searchTerm, sortOption, isClient, popularityNameVolumeMap]);
 
+  // Map order items to quantities using local ID
   const orderQuantities = useMemo(() => {
     const quantities: { [productId: string]: number } = {};
     order.forEach(item => {
@@ -403,6 +408,7 @@ export function OrderBuilder() {
     setSortOption(newSortOption);
   }, []);
 
+  // Add product to order using local ID
   const addToOrder = useCallback((product: Product) => {
     setOrder((prevOrder) => {
       const existingItem = prevOrder.find((item) => item.id === product.id);
@@ -411,13 +417,14 @@ export function OrderBuilder() {
           item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
         );
       } else {
-        // Ensure price is defined when adding
-        const price = product.price !== undefined ? product.price : 0; // Default to 0 if undefined
+        const price = product.price !== undefined ? product.price : 0;
+        // Add the full product object (including local ID) to the order
         return [...prevOrder, { ...product, price, quantity: 1 }];
       }
     });
   }, []);
 
+  // Remove one item from order using local ID
   const removeFromOrder = useCallback((productId: string) => {
     setOrder((prevOrder) => {
       const existingItem = prevOrder.find((item) => item.id === productId);
@@ -431,34 +438,38 @@ export function OrderBuilder() {
     });
   }, []);
 
+  // Remove entire item line from order using local ID
   const removeEntireItem = useCallback((productId: string) => {
     setOrder((prevOrder) => prevOrder.filter((item) => item.id !== productId));
   }, []);
 
+  // Clear the entire order
   const clearOrder = useCallback(() => {
     setOrder([]);
     setSelectedPaymentMethod(null);
   }, []);
 
+  // Handle checkout
   const handleCheckout = useCallback(() => {
     if (!isClient) return;
 
-    if (order.length === 0) {
+    if (order.length === 0) { /* ... validation ... */
       toast({ title: "Заказ пуст", description: "Пожалуйста, добавьте товары в заказ.", variant: "destructive" });
       return;
     }
-    if (!selectedPaymentMethod) {
+    if (!selectedPaymentMethod) { /* ... validation ... */
       toast({ title: "Выберите способ оплаты", description: "Пожалуйста, укажите способ оплаты заказа.", variant: "destructive" });
       return;
     }
 
+    // Prepare order data for storage, keeping Name/Volume for potential analysis
     const orderData: Order = {
       id: `order_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       items: order.map(item => ({
-        id: item.id,
+        id: item.id, // Store local ID used at time of order? Or remove if Name/Volume is primary key? For now, keep it.
         name: item.name,
         volume: item.volume,
-        price: item.price ?? 0, // Ensure price is defined
+        price: item.price ?? 0,
         quantity: item.quantity,
       })),
       totalPrice: totalPrice,
@@ -466,33 +477,27 @@ export function OrderBuilder() {
       paymentMethod: selectedPaymentMethod,
     };
 
+    // Save to localStorage
     try {
       let pastOrders: Order[] = [];
       const storedOrders = localStorage.getItem(LOCAL_STORAGE_ORDERS_KEY);
-      if (storedOrders) {
+      if (storedOrders) { /* ... parse existing orders ... */
         try {
           const parsed = JSON.parse(storedOrders);
           if (Array.isArray(parsed)) pastOrders = parsed;
-        } catch (parseError) {
-          console.error("Failed to parse past orders, starting fresh.", parseError);
-        }
+        } catch (parseError) { console.error("Failed to parse past orders, starting fresh.", parseError); }
       }
       pastOrders.push(orderData);
       const newOrdersJson = JSON.stringify(pastOrders);
       localStorage.setItem(LOCAL_STORAGE_ORDERS_KEY, newOrdersJson);
 
-      // Manually dispatch storage event to trigger updates in other components (like SalesHistory)
-      window.dispatchEvent(new StorageEvent('storage', {
-        key: LOCAL_STORAGE_ORDERS_KEY,
-        newValue: newOrdersJson,
-        storageArea: localStorage,
-      }));
-       // Manually trigger popularity update
-       setPopularityVersion(v => v + 1);
+      // Dispatch event and trigger popularity update
+      window.dispatchEvent(new StorageEvent('storage', { key: LOCAL_STORAGE_ORDERS_KEY, newValue: newOrdersJson, storageArea: localStorage, }));
+      setPopularityVersion(v => v + 1);
 
       toast({ title: "Заказ оформлен!", description: `Итого: ${totalPrice.toFixed(0)} ₽ (${selectedPaymentMethod}). Ваш заказ сохранен.` });
       clearOrder();
-      setIsSheetOpen(false);
+      setIsSheetOpen(false); // Close mobile sheet
     } catch (error) {
       console.error("Failed to save order:", error);
       toast({ title: "Ошибка оформления заказа", description: "Не удалось сохранить заказ.", variant: "destructive" });
@@ -507,48 +512,48 @@ export function OrderBuilder() {
 
 
   // --- SSR Loading State ---
-  if (!isClient) {
-    // Simplified SSR loading state
-    return (
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2">
-          <div className="flex justify-between items-center mb-4">
-             <h2 className="text-2xl font-semibold text-primary">Доступные товары</h2>
-             <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" disabled>
-                 <RefreshCw className="h-4 w-4 animate-spin" />
+   if (!isClient) { /* ... SSR Loading UI ... */
+     return (
+       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+         <div className="lg:col-span-2">
+           <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-semibold text-primary">Доступные товары</h2>
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" disabled>
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+              </Button>
+           </div>
+           <div className="flex gap-2 mb-4">
+             <div className="relative flex-grow">
+               <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+               <Input placeholder="Поиск товаров..." value="" className="pl-8 pr-8 h-9" disabled />
+             </div>
+             <Button variant="outline" size="sm" className="h-9 px-3" disabled>
+               <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" />
+               Сортировать
              </Button>
-          </div>
-          <div className="flex gap-2 mb-4">
-            <div className="relative flex-grow">
-              <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Поиск товаров..." value="" className="pl-8 pr-8 h-9" disabled />
-            </div>
-            <Button variant="outline" size="sm" className="h-9 px-3" disabled>
-              <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" />
-              Сортировать
-            </Button>
-          </div>
-          <p className="text-muted-foreground">Загрузка товаров...</p>
-        </div>
-        <div className="lg:col-span-1">
-          <Card className="shadow-lg lg:sticky lg:top-8 max-h-[calc(100vh-4rem)] flex flex-col">
-            <CardHeader aria-labelledby={orderCardTitleId}>
-              <CardTitle id={orderCardTitleId} className="flex items-center justify-between text-xl">
-                <span>Текущий заказ</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground text-center py-4">Загрузка...</p>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    );
-  }
+           </div>
+           <p className="text-muted-foreground">Загрузка товаров...</p>
+         </div>
+         <div className="lg:col-span-1">
+           <Card className="shadow-lg lg:sticky lg:top-8 max-h-[calc(100vh-4rem)] flex flex-col">
+             <CardHeader aria-labelledby={orderCardTitleId}>
+               <CardTitle id={orderCardTitleId} className="flex items-center justify-between text-xl">
+                 <span>Текущий заказ</span>
+               </CardTitle>
+             </CardHeader>
+             <CardContent>
+               <p className="text-muted-foreground text-center py-4">Загрузка...</p>
+             </CardContent>
+           </Card>
+         </div>
+       </div>
+     );
+   }
+
 
   // --- Main Render Logic (Client-Side) ---
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8 pb-16 lg:pb-0"> {/* Increased pb for floating button */}
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8 pb-16 lg:pb-0">
       {/* Product List */}
       <div className="lg:col-span-2">
          <div className="flex justify-between items-center mb-4">
@@ -576,58 +581,40 @@ export function OrderBuilder() {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-8 pr-8 h-9"
-              disabled={isLoading} // Disable during load
+              disabled={isLoading}
             />
             {searchTerm && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                onClick={() => setSearchTerm("")}
-                 disabled={isLoading} // Disable during load
-              >
-                <X className="h-4 w-4" />
-                <span className="sr-only">Очистить поиск</span>
+              <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setSearchTerm("")} disabled={isLoading}>
+                <X className="h-4 w-4" /> <span className="sr-only">Очистить поиск</span>
               </Button>
             )}
           </div>
-
+          {/* Sort Dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="h-9 px-3 text-xs sm:text-sm" disabled={isLoading}>
-                <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" />
-                Сортировать
+                <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" /> Сортировать
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>Сортировать по</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => handleSetSortOption('name-asc')} className={cn(sortOption === 'name-asc' && 'bg-accent text-accent-foreground')}>
-                <ArrowDownAZ className="mr-2 h-4 w-4" /> <span>Названию (А-Я)</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => handleSetSortOption('name-desc')} className={cn(sortOption === 'name-desc' && 'bg-accent text-accent-foreground')}>
-                <ArrowDownZA className="mr-2 h-4 w-4" /> <span>Названию (Я-А)</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => handleSetSortOption('price-asc')} className={cn(sortOption === 'price-asc' && 'bg-accent text-accent-foreground')}>
-                <ArrowDown01 className="mr-2 h-4 w-4" /> <span>Цене (возрастание)</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => handleSetSortOption('price-desc')} className={cn(sortOption === 'price-desc' && 'bg-accent text-accent-foreground')}>
-                <ArrowDown10 className="mr-2 h-4 w-4" /> <span>Цене (убывание)</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => handleSetSortOption('popularity-desc')} className={cn(sortOption === 'popularity-desc' && 'bg-accent text-accent-foreground')}>
-                <TrendingUp className="mr-2 h-4 w-4" /> <span>Популярности (сначала топ)</span>
-              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => handleSetSortOption('name-asc')} className={cn(sortOption === 'name-asc' && 'bg-accent text-accent-foreground')}> <ArrowDownAZ className="mr-2 h-4 w-4" /> <span>Названию (А-Я)</span> </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => handleSetSortOption('name-desc')} className={cn(sortOption === 'name-desc' && 'bg-accent text-accent-foreground')}> <ArrowDownZA className="mr-2 h-4 w-4" /> <span>Названию (Я-А)</span> </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => handleSetSortOption('price-asc')} className={cn(sortOption === 'price-asc' && 'bg-accent text-accent-foreground')}> <ArrowDown01 className="mr-2 h-4 w-4" /> <span>Цене (возрастание)</span> </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => handleSetSortOption('price-desc')} className={cn(sortOption === 'price-desc' && 'bg-accent text-accent-foreground')}> <ArrowDown10 className="mr-2 h-4 w-4" /> <span>Цене (убывание)</span> </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => handleSetSortOption('popularity-desc')} className={cn(sortOption === 'popularity-desc' && 'bg-accent text-accent-foreground')}> <TrendingUp className="mr-2 h-4 w-4" /> <span>Популярности (сначала топ)</span> </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
 
-        {/* Pass isLoading to ProductGrid */}
+        {/* Product Grid */}
         <ProductGrid
           products={filteredAndSortedProducts}
           orderQuantities={orderQuantities}
           topProductsRanking={topProductsRanking}
           onAddToOrder={addToOrder}
-          onRemoveFromOrder={removeFromOrder}
+          onRemoveFromOrder={removeFromOrder} // Pass the handler for removing by local ID
           isLoading={isLoading}
         />
       </div>
@@ -647,7 +634,6 @@ export function OrderBuilder() {
                 <span>Корзина</span>
               </div>
               {totalPrice > 0 && (
-                // Use font-sans for currency
                 <span className="font-semibold font-sans">{totalPrice.toFixed(0)} ₽</span>
               )}
             </Button>
@@ -655,13 +641,11 @@ export function OrderBuilder() {
           <SheetContent
             side="bottom"
             className="rounded-t-lg h-[75vh] flex flex-col p-0"
-            aria-labelledby={orderSheetTitleId} // Use aria-labelledby
-            aria-describedby={undefined} // Explicitly remove aria-describedby if not needed
+            aria-labelledby={orderSheetTitleId}
+            aria-describedby={undefined}
           >
              <SheetHeader className="p-3 md:p-4 border-b text-left">
-                 {/* Use VisuallyHidden for the accessible title */}
                  <VisuallyHidden><SheetTitle id={orderSheetTitleId}>Текущий заказ</SheetTitle></VisuallyHidden>
-                 {/* Visible title (optional) */}
                  <p className="text-lg font-semibold text-foreground" aria-hidden="true">Текущий заказ</p>
              </SheetHeader>
             <OrderDetails
@@ -678,9 +662,7 @@ export function OrderBuilder() {
               orderCardTitleId={orderCardTitleId}
               orderSheetTitleId={orderSheetTitleId}
             />
-            {/* <SheetFooter> ... </SheetFooter> */}
-            <SheetClose asChild>
-                {/* Use VisuallyHidden for the accessible close button text */}
+             <SheetClose asChild>
                 <VisuallyHidden><button>Закрыть</button></VisuallyHidden>
             </SheetClose>
           </SheetContent>
@@ -689,8 +671,8 @@ export function OrderBuilder() {
 
       {/* Desktop Current Order */}
       <div className="hidden lg:block lg:col-span-1">
-         <Card className="shadow-md lg:sticky lg:top-4 md:top-8 max-h-[calc(100vh-4rem)] flex flex-col"> {/* Keep max height */}
-          <CardHeader className="p-3 md:p-4 pb-3 flex-shrink-0" aria-labelledby={orderCardTitleId}> {/* Ensure header shrinks */}
+         <Card className="shadow-md lg:sticky lg:top-4 md:top-8 max-h-[calc(100vh-4rem)] flex flex-col">
+          <CardHeader className="p-3 md:p-4 pb-3 flex-shrink-0" aria-labelledby={orderCardTitleId}>
             <CardTitle id={orderCardTitleId} className="text-xl">Текущий заказ</CardTitle>
           </CardHeader>
           <OrderDetails
@@ -711,3 +693,4 @@ export function OrderBuilder() {
     </div>
   );
 }
+
