@@ -132,12 +132,13 @@ const AddProductForm: React.FC<{
                <FormControl>
                  {/* Convert number back to string for input value */}
                  <Input
-                   type="text"
-                   inputMode="decimal"
-                   pattern="[0-9]*([.,][0-9]+)?"
+                   type="number" // Change type to number
+                   inputMode="decimal" // Keep for mobile keyboard hints
+                   // Remove pattern attribute, type="number" handles basic numeric input
+                   step="any" // Allow decimals
                    placeholder="например, 165"
                    onChange={(e) => onChange(e.target.value)} // Pass the string value
-                   value={restField.value !== undefined ? String(restField.value).replace('.', ',') : ''} // Display with comma if value exists
+                   value={restField.value !== undefined ? String(restField.value) : ''} // Display string value, Zod handles conversion
                    {...restField} // Pass other field props like name, onBlur, ref
                  />
                </FormControl>
@@ -470,8 +471,8 @@ export function ProductManagement() {
     editForm.reset({
       name: product.name,
       volume: product.volume || "",
-      // Ensure price is number or undefined for the form
-      price: product.price !== undefined ? Number(product.price) : undefined,
+      // Ensure price is number or undefined for the form, format to string for input
+      price: product.price !== undefined ? String(product.price) : undefined,
       imageUrl: product.imageUrl || "",
       dataAiHint: product.dataAiHint || "",
     });

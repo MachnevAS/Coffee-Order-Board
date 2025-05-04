@@ -81,12 +81,13 @@ export function ProductListItem({
                    <FormControl>
                      {/* Convert number back to string for input value */}
                      <Input
-                       type="text"
-                       inputMode="decimal"
-                       pattern="[0-9]*([.,][0-9]+)?"
+                       type="number" // Change type to number
+                       inputMode="decimal" // Keep for mobile keyboard hints
+                       // Remove pattern attribute
+                       step="any" // Allow decimals
                        className="h-8 text-sm"
                        onChange={(e) => onChange(e.target.value)} // Pass the string value
-                       value={restField.value !== undefined ? String(restField.value).replace('.', ',') : ''} // Display with comma if value exists
+                       value={restField.value !== undefined ? String(restField.value) : ''} // Display string value, Zod handles conversion
                        {...restField} // Pass other field props like name, onBlur, ref
                      />
                    </FormControl>
