@@ -11,16 +11,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Логин и пароль обязательны' }, { status: 400 });
     }
 
+    console.log(`[API Login] Attempting login for user: ${login}`);
     const userData = await getUserDataFromSheet(login);
 
     if (!userData || !userData.passwordHash) {
       console.log(`[API Login] User not found or missing password hash for login: ${login}`);
       return NextResponse.json({ error: 'Неверный логин или пароль' }, { status: 401 });
     }
+    console.log(`[API Login] Found user data for login: ${login}`);
 
-    // Verify password (assuming plain text comparison for now, replace with hashing later)
-    // const passwordMatches = await verifyPassword(password, userData.passwordHash); // Use verifyPassword for hashed passwords
-    const passwordMatches = password === userData.passwordHash; // Simple comparison for now
+
+    // Verify password using the function (even if it's plain text for now)
+    const passwordMatches = await verifyPassword(password, userData.passwordHash);
+    // const passwordMatches = password === userData.passwordHash; // Simple comparison for now (kept for reference)
 
     if (!passwordMatches) {
       console.log(`[API Login] Invalid password for login: ${login}`);
@@ -39,10 +42,11 @@ export async function POST(request: Request) {
       // Exclude passwordHash from session
     };
 
-    await session().set('user', userSessionData);
-    await session().save();
+    const currentSession = await session(); // Await the session
+    currentSession.user = userSessionData; // Set the user data
+    await currentSession.save(); // Save the session
 
-    console.log(`[API Login] Successful login for user: ${login}`);
+    console.log(`[API Login] Successful login for user: ${login}, session saved.`);
     return NextResponse.json({ user: userSessionData });
 
   } catch (error: any) {

@@ -22,7 +22,7 @@ const PRODUCT_SHEET_NAME_ONLY = process.env.GOOGLE_SHEET_NAME;
 const USERS_SHEET_NAME_ONLY = process.env.GOOGLE_USERS_SHEET_NAME;
 
 // --- API Key (Optional for Read-Only Fallback/Alternative) ---
-const API_KEY = process.env.GOOGLE_SHEETS_API_KEY; // Can still be used for read operations if preferred
+// const API_KEY = process.env.GOOGLE_SHEETS_API_KEY; // Can still be used for read operations if preferred
 
 const SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
 
@@ -49,14 +49,18 @@ try {
         authClient = auth; // googleapis library can directly use the GoogleAuth instance
     }
     // Fallback to API Key for read operations if Service Account is not configured
+    /*
     else if (API_KEY) {
         console.warn("[GSHEET Auth] Using API Key credentials (read-only operations recommended).");
         authClient = API_KEY;
         // Note: Write operations (add, update, delete) will fail with only API key
     }
+    */
     else {
-        throw new Error("Missing Google Sheets API credentials. Configure either Service Account (GOOGLE_SERVICE_ACCOUNT_EMAIL, GOOGLE_PRIVATE_KEY) or API Key (GOOGLE_SHEETS_API_KEY).");
+        // Throw error if neither Service Account nor API Key (if it were enabled) is provided
+        throw new Error("Missing Google Sheets API credentials. Configure Service Account (GOOGLE_SERVICE_ACCOUNT_EMAIL, GOOGLE_PRIVATE_KEY).");
     }
+
 
     sheets = google.sheets({ version: 'v4', auth: authClient });
     console.log("[GSHEET Auth] Google Sheets client initialized successfully.");
@@ -92,6 +96,7 @@ const USER_COLUMN_MAP = {
     iconColor: 7 // Column H
 };
 const USER_HEADER_ROW_COUNT = 1;
+// Fetch all columns A-H for users, starting from the row after the header
 const USER_DATA_RANGE = `${USERS_SHEET_NAME_ONLY}!A${USER_HEADER_ROW_COUNT + 1}:H`;
 
 
@@ -116,7 +121,11 @@ const rowToProduct = (row: any[], rowIndex: number): Product | null => {
   const name = row[PRODUCT_COLUMN_MAP.name] ?? '';
   const volume = row[PRODUCT_COLUMN_MAP.volume] || undefined;
   const priceStr = row[PRODUCT_COLUMN_MAP.price]?.toString().replace(',', '.').trim(); // Handle comma decimal, trim whitespace
-  const price = parseFloat(priceStr);
+
+  // Validate price: allow only numbers (integers or decimals)
+  const isValidPrice = /^\d+(\.\d+)?$/.test(priceStr);
+  const price = isValidPrice ? parseFloat(priceStr) : undefined;
+
 
   // Generate a local ID based on row content and index
   // Add header offset + 1 because sheet rows are 1-based, array index is 0-based
@@ -126,7 +135,7 @@ const rowToProduct = (row: any[], rowIndex: number): Product | null => {
     id: localId, // Generated local ID
     name: name,
     volume: volume,
-    price: isNaN(price) ? undefined : price,
+    price: price,
     imageUrl: row[PRODUCT_COLUMN_MAP.imageUrl] || undefined,
     dataAiHint: row[PRODUCT_COLUMN_MAP.dataAiHint] || undefined,
   };
@@ -135,8 +144,15 @@ const rowToProduct = (row: any[], rowIndex: number): Product | null => {
 // Helper to convert sheet row to User object
 const rowToUser = (row: any[]): User | null => {
     if (!row || row.length <= USER_COLUMN_MAP.passwordHash || !row[USER_COLUMN_MAP.login]) {
-        return null; // Skip empty rows or rows without login/password
+        // Check if it's just an empty row
+        if(row.every(cell => cell === '')) return null;
+        console.warn(`[GSHEET User] Skipping row due to missing login or password column data:`, row);
+        return null; // Skip rows missing critical data
     }
+    // Basic validation for iconColor (should be HEX)
+    const iconColorRaw = row[USER_COLUMN_MAP.iconColor];
+    const isValidColor = typeof iconColorRaw === 'string' && /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(iconColorRaw);
+
     return {
         id: row[USER_COLUMN_MAP.id] ?? '', // Assuming ID is in the first column
         login: row[USER_COLUMN_MAP.login],
@@ -145,7 +161,7 @@ const rowToUser = (row: any[]): User | null => {
         middleName: row[USER_COLUMN_MAP.middleName] || undefined,
         lastName: row[USER_COLUMN_MAP.lastName] || undefined,
         position: row[USER_COLUMN_MAP.position] || undefined,
-        iconColor: row[USER_COLUMN_MAP.iconColor] || undefined,
+        iconColor: isValidColor ? iconColorRaw : undefined, // Use undefined if invalid format
     };
 };
 
@@ -155,10 +171,12 @@ const productToRow = (product: Omit<Product, 'id'>): any[] => {
   const row: any[] = [];
   row[PRODUCT_COLUMN_MAP.name] = product.name;
   row[PRODUCT_COLUMN_MAP.volume] = product.volume ?? ''; // Use empty string for undefined
-  // Format price with comma for consistency if needed, or keep as number
-  row[PRODUCT_COLUMN_MAP.price] = product.price !== undefined ? product.price : ''; // Use empty string for undefined price
+  // Store price as a number if defined, otherwise empty string
+  row[PRODUCT_COLUMN_MAP.price] = product.price !== undefined ? product.price : '';
   row[PRODUCT_COLUMN_MAP.imageUrl] = product.imageUrl ?? '';
   row[PRODUCT_COLUMN_MAP.dataAiHint] = product.dataAiHint ?? '';
+  // Ensure the row has the correct number of columns (A-E)
+  while(row.length < 5) row.push('');
   return row;
 };
 
@@ -192,7 +210,7 @@ const getSheetGid = async (sheetName: string): Promise<number | null> => {
 // Helper to find the row number of a product by Name and Volume
 const findProductRowIndexByNameAndVolume = async (name: string, volume?: string | null): Promise<number | null> => {
   if (!sheets || authError) {
-    console.error(`[GSHEET] Sheets client not initialized in findProductRowIndexByNameAndVolume. Auth error: ${authError}`);
+    console.error(`[GSHEET Product] Sheets client not initialized in findProductRowIndexByNameAndVolume. Auth error: ${authError}`);
     return null;
   }
   const searchVolume = volume ?? ''; // Treat null/undefined volume as empty string for matching
@@ -201,7 +219,8 @@ const findProductRowIndexByNameAndVolume = async (name: string, volume?: string 
     console.log(`[GSHEET Product] Searching for Name: "${name}", Volume: "${searchVolume}" in range ${PRODUCT_SHEET_NAME_ONLY}!A:B`);
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID!,
-      range: `${PRODUCT_SHEET_NAME_ONLY}!A${PRODUCT_HEADER_ROW_COUNT + 1}:B`, // Fetch Name and Volume columns starting after the header
+      // Fetch Name and Volume columns starting after the header row
+      range: `${PRODUCT_SHEET_NAME_ONLY}!A${PRODUCT_HEADER_ROW_COUNT + 1}:B`,
     });
     const rows = response.data.values;
     if (!rows) {
@@ -216,6 +235,7 @@ const findProductRowIndexByNameAndVolume = async (name: string, volume?: string 
     );
 
     if (indexInData !== -1) {
+        // Calculate the actual sheet row index (1-based)
         const sheetRowIndex = indexInData + PRODUCT_HEADER_ROW_COUNT + 1;
         console.log(`[GSHEET Product] Found match for "${name}", "${searchVolume}" at sheet row index: ${sheetRowIndex}`);
         return sheetRowIndex;
@@ -283,7 +303,7 @@ export const addProductToSheet = async (product: Omit<Product, 'id'>): Promise<b
     const existingRowIndex = await findProductRowIndexByNameAndVolume(product.name, product.volume);
     if (existingRowIndex !== null) {
         console.warn(`[GSHEET Product] Product "${product.name}" (${product.volume || 'N/A'}) already exists at row ${existingRowIndex}. Skipping add.`);
-        return false;
+        return false; // Indicate that the product was not added because it exists
     }
 
     const row = productToRow(product);
@@ -291,6 +311,7 @@ export const addProductToSheet = async (product: Omit<Product, 'id'>): Promise<b
       spreadsheetId: SHEET_ID!,
       range: PRODUCT_FULL_RANGE_FOR_APPEND,
       valueInputOption: 'USER_ENTERED',
+      insertDataOption: 'INSERT_ROWS', // Explicitly insert rows
       requestBody: {
         values: [row],
       },
@@ -335,7 +356,7 @@ export const updateProductInSheet = async (
 
   try {
     console.log(`[GSHEET Product] Attempting to update product originally named: "${originalName}", Volume: "${originalVolume || ''}"`);
-    console.log(`[GSHEET Product] New data: Name "${newData.name}", Volume "${newData.volume || ''}"`);
+    console.log(`[GSHEET Product] New data: Name "${newData.name}", Volume "${newData.volume || ''}", Price: ${newData.price}`);
 
     const rowIndex = await findProductRowIndexByNameAndVolume(originalName, originalVolume);
     if (rowIndex === null) {
@@ -474,6 +495,7 @@ export const syncRawProductsToSheet = async (): Promise<{ success: boolean; mess
       spreadsheetId: SHEET_ID!,
       range: PRODUCT_FULL_RANGE_FOR_APPEND,
       valueInputOption: 'USER_ENTERED',
+      insertDataOption: 'INSERT_ROWS', // Ensure new rows are inserted
       requestBody: {
         values: rowsToAdd,
       },
@@ -492,7 +514,7 @@ export const syncRawProductsToSheet = async (): Promise<{ success: boolean; mess
     } else if (error?.message) {
         message += ` Error detail: ${error.message}`;
     }
-    return { success: false, message: message, addedCount: 0, skippedCount: 0 };
+    return { success: false, message: message, addedCount: 0, skippedCount: skippedCount };
   }
 };
 
@@ -508,7 +530,7 @@ export const getUserDataFromSheet = async (login: string): Promise<User | null> 
         console.log(`[GSHEET User] Fetching user data for login: ${login}`);
         const response = await sheets.spreadsheets.values.get({
             spreadsheetId: SHEET_ID!,
-            range: USER_DATA_RANGE,
+            range: USER_DATA_RANGE, // Use the correct range defined earlier
         });
 
         const rows = response.data.values;
@@ -516,6 +538,7 @@ export const getUserDataFromSheet = async (login: string): Promise<User | null> 
             console.log(`[GSHEET User] No users found in sheet ${USERS_SHEET_NAME_ONLY}.`);
             return null;
         }
+        console.log(`[GSHEET User] Fetched ${rows.length} user rows.`);
 
         // Find the row matching the login
         const userRow = rows.find(row => row[USER_COLUMN_MAP.login] === login);
@@ -525,8 +548,15 @@ export const getUserDataFromSheet = async (login: string): Promise<User | null> 
             return null;
         }
 
+        console.log(`[GSHEET User] Found row data for login "${login}":`, userRow);
         const user = rowToUser(userRow);
-        console.log(`[GSHEET User] Found user data for login "${login}".`);
+
+        if (user) {
+             console.log(`[GSHEET User] Successfully parsed user data for login "${login}":`, user);
+        } else {
+             console.warn(`[GSHEET User] Failed to parse user data for row:`, userRow);
+        }
+
         return user;
 
     } catch (error: any) {
@@ -559,7 +589,8 @@ const findUserRowIndexByLogin = async (login: string): Promise<number | null> =>
     console.log(`[GSHEET User] Searching for Login: "${login}" in range ${USERS_SHEET_NAME_ONLY}!B:B`);
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID!,
-      range: `${USERS_SHEET_NAME_ONLY}!B${USER_HEADER_ROW_COUNT + 1}:B`, // Fetch only Login column
+      // Fetch only the Login column starting after the header
+      range: `${USERS_SHEET_NAME_ONLY}!B${USER_HEADER_ROW_COUNT + 1}:B`,
     });
     const rows = response.data.values;
     if (!rows) {
@@ -570,6 +601,7 @@ const findUserRowIndexByLogin = async (login: string): Promise<number | null> =>
     const indexInData = rows.findIndex(row => row[0] === login); // Index 0 because we only fetched one column
 
     if (indexInData !== -1) {
+        // Calculate the actual sheet row index (1-based)
         const sheetRowIndex = indexInData + USER_HEADER_ROW_COUNT + 1;
         console.log(`[GSHEET User] Found match for login "${login}" at sheet row index: ${sheetRowIndex}`);
         return sheetRowIndex;
@@ -618,14 +650,18 @@ export const updateUserInSheet = async (login: string, updates: Partial<User>): 
              return false;
         }
 
-        // Prepare the updated row data
-        const updatedRow = [...currentUserDataRow];
-        // Only update allowed fields (firstName, middleName, lastName)
-        if (updates.firstName !== undefined) updatedRow[USER_COLUMN_MAP.firstName] = updates.firstName;
-        if (updates.middleName !== undefined) updatedRow[USER_COLUMN_MAP.middleName] = updates.middleName;
-        if (updates.lastName !== undefined) updatedRow[USER_COLUMN_MAP.lastName] = updates.lastName;
+        // Prepare the updated row data, ensuring all columns A-H are present
+        const updatedRow: any[] = [];
+        for (let i = 0; i < 8; i++) { // Ensure 8 columns (A-H)
+           updatedRow[i] = currentUserDataRow[i] ?? ''; // Default to empty string if column was empty
+        }
+
+        // Apply updates to allowed fields
+        if (updates.firstName !== undefined) updatedRow[USER_COLUMN_MAP.firstName] = updates.firstName || '';
+        if (updates.middleName !== undefined) updatedRow[USER_COLUMN_MAP.middleName] = updates.middleName || '';
+        if (updates.lastName !== undefined) updatedRow[USER_COLUMN_MAP.lastName] = updates.lastName || '';
         // Add password update logic here if implemented
-        // if (updates.passwordHash !== undefined) updatedRow[USER_COLUMN_MAP.passwordHash] = updates.passwordHash;
+        // if (updates.passwordHash !== undefined) updatedRow[USER_COLUMN_MAP.passwordHash] = updates.passwordHash || ''; // Ensure password isn't accidentally cleared
 
         const range = `${USERS_SHEET_NAME_ONLY}!A${rowIndex}:H${rowIndex}`;
         console.log(`[GSHEET User] Updating row ${rowIndex} with data:`, updatedRow);
