@@ -21,15 +21,24 @@ import {
 import type { Product } from "@/types/product";
 import { Edit, Trash2, Save, X, Coffee } from "lucide-react";
 import type { UseFormReturn } from "react-hook-form";
+import * as z from "zod"; // Import Zod
+
+// Schema for form data (matches sheet columns except ID)
+const productFormSchema = z.object({
+  name: z.string().min(2, "Название товара должно содержать не менее 2 символов"),
+  volume: z.string().optional(),
+  // Use Zod schema for price validation and transformation
+  price: z.string()
+        .refine((val) => /^\d*([.,]\d+)?$/.test(val.trim()) || val.trim() === '', "Цена должна быть числом")
+        .transform((val) => val.trim() === '' ? undefined : parseFloat(val.replace(',', '.'))) // Convert to number or undefined
+        .refine((val) => val === undefined || val >= 0, "Цена должна быть 0 или больше")
+        .optional(),
+  imageUrl: z.string().url("Должен быть действительный URL").optional().or(z.literal('')),
+  dataAiHint: z.string().optional(),
+});
 
 // Assuming ProductFormData matches the management form schema
-type ProductFormData = {
-  name: string;
-  volume?: string;
-  price: number | undefined;
-  imageUrl?: string;
-  dataAiHint?: string;
-};
+type ProductFormData = z.infer<typeof productFormSchema>;
 
 interface ProductListItemProps {
   product: Product; // Contains local ID
@@ -65,7 +74,26 @@ export function ProductListItem({
              {/* Form fields remain the same */}
              <FormField control={editForm.control} name="name" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Название</FormLabel><FormControl><Input {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
              <FormField control={editForm.control} name="volume" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Объём</FormLabel><FormControl><Input {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
-             <FormField control={editForm.control} name="price" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Цена (₽)</FormLabel><FormControl><Input type="text" inputMode="numeric" pattern="[0-9]*([\.,][0-9]+)?" {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
+             {/* Use text input for price, validation handled by Zod */}
+             <FormField control={editForm.control} name="price" render={({ field: { onChange, ...restField } }) => (
+                 <FormItem>
+                   <FormLabel className="text-xs">Цена (₽)</FormLabel>
+                   <FormControl>
+                     {/* Convert number back to string for input value */}
+                     <Input
+                       type="text"
+                       inputMode="decimal"
+                       pattern="[0-9]*([.,][0-9]+)?"
+                       className="h-8 text-sm"
+                       onChange={(e) => onChange(e.target.value)} // Pass the string value
+                       value={restField.value !== undefined ? String(restField.value).replace('.', ',') : ''} // Display with comma if value exists
+                       {...restField} // Pass other field props like name, onBlur, ref
+                     />
+                   </FormControl>
+                   <FormMessage />
+                 </FormItem>
+               )}
+             />
              <FormField control={editForm.control} name="imageUrl" render={({ field }) => ( <FormItem><FormLabel className="text-xs">URL изображения</FormLabel><FormControl><Input {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
              <FormField control={editForm.control} name="dataAiHint" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Подсказка ИИ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
              <div className="flex justify-end gap-2 pt-2">

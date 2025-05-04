@@ -1,3 +1,4 @@
+
 'use server';
 /**
  * @fileoverview Service for interacting with the Google Sheets API using Service Account authentication.
@@ -47,7 +48,7 @@ try {
     }
     // Fallback to API Key for read operations if Service Account is not configured
     else if (API_KEY) {
-        console.log("[GSHEET Auth] Using API Key credentials (read-only operations recommended).");
+        console.warn("[GSHEET Auth] Using API Key credentials (read-only operations recommended).");
         authClient = API_KEY;
         // Note: Write operations (add, update, delete) will fail with only API key
     }
@@ -102,7 +103,8 @@ const rowToProduct = (row: any[], rowIndex: number): Product | null => {
   const price = parseFloat(priceStr);
 
   // Generate a local ID based on row content and index
-  const localId = generateLocalId(name, volume, rowIndex + HEADER_ROW_COUNT); // Add header offset to index
+  // Add header offset + 1 because sheet rows are 1-based, array index is 0-based
+  const localId = generateLocalId(name, volume, rowIndex + HEADER_ROW_COUNT + 1);
 
   return {
     id: localId, // Generated local ID
@@ -269,8 +271,16 @@ export const addProductToSheet = async (product: Omit<Product, 'id'>): Promise<b
   }
 };
 
-// Update a product, finding it by Name and Volume - Requires Service Account Auth
-export const updateProductInSheet = async (product: Omit<Product, 'id'>): Promise<boolean> => {
+// Update a product, finding it by ORIGINAL Name and Volume - Requires Service Account Auth
+export const updateProductInSheet = async (
+    payload: {
+        originalName: string;
+        originalVolume?: string | null;
+        newData: Omit<Product, 'id'>;
+    }
+): Promise<boolean> => {
+  const { originalName, originalVolume, newData } = payload;
+
   if (!sheets || authError) {
     console.error(`[GSHEET] Sheets client not initialized in updateProductInSheet. Auth error: ${authError}`);
     return false;
@@ -279,21 +289,36 @@ export const updateProductInSheet = async (product: Omit<Product, 'id'>): Promis
       console.error('[GSHEET] Update operation requires Service Account credentials. API Key is not sufficient.');
       return false;
   }
-  if (!product.name) {
-    console.error('[GSHEET] Attempted to update product without a name.');
+  if (!originalName) {
+    console.error('[GSHEET] Original product name missing for update.');
     return false;
   }
+   if (!newData.name) {
+       console.error('[GSHEET] New product name missing for update.');
+       return false;
+   }
+
 
   try {
-    console.log(`[GSHEET] Attempting to update product: Name "${product.name}", Volume "${product.volume || ''}"`);
-    const rowIndex = await findRowIndexByNameAndVolume(product.name, product.volume);
+    console.log(`[GSHEET] Attempting to update product originally named: "${originalName}", Volume: "${originalVolume || ''}"`);
+    console.log(`[GSHEET] New data: Name "${newData.name}", Volume "${newData.volume || ''}"`);
+
+    const rowIndex = await findRowIndexByNameAndVolume(originalName, originalVolume);
     if (rowIndex === null) {
-      console.error(`[GSHEET] Product with Name "${product.name}", Volume "${product.volume || ''}" not found for update.`);
+      console.error(`[GSHEET] Product with original Name "${originalName}", Volume "${originalVolume || ''}" not found for update.`);
       return false;
     }
 
+    // Check if the new Name+Volume combination already exists elsewhere (excluding the current row)
+    const potentialConflictIndex = await findRowIndexByNameAndVolume(newData.name, newData.volume);
+    if (potentialConflictIndex !== null && potentialConflictIndex !== rowIndex) {
+        console.warn(`[GSHEET] Update conflict: Another product with Name "${newData.name}" and Volume "${newData.volume || ''}" already exists at row ${potentialConflictIndex}. Aborting update.`);
+        return false; // Or handle as an error, depending on desired behavior
+    }
+
+
     const range = `${SHEET_NAME_ONLY}!A${rowIndex}:E${rowIndex}`;
-    const rowData = productToRow(product);
+    const rowData = productToRow(newData);
 
     console.log(`[GSHEET] Updating row ${rowIndex} with data:`, rowData);
     await sheets.spreadsheets.values.update({
@@ -307,7 +332,7 @@ export const updateProductInSheet = async (product: Omit<Product, 'id'>): Promis
     console.log(`[GSHEET] Successfully updated product at row ${rowIndex}`);
     return true;
   } catch (error: any) {
-    console.error(`[GSHEET] Error updating product "${product.name}" in Google Sheet:`, error?.message || error);
+    console.error(`[GSHEET] Error updating product originally named "${originalName}" in Google Sheet:`, error?.message || error);
     // console.error("[GSHEET] Full error object:", JSON.stringify(error, null, 2));
     console.error("[GSHEET] Check Service Account permissions (must allow writing) and Sheet sharing settings.");
     return false;

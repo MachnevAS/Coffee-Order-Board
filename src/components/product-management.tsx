@@ -63,10 +63,16 @@ import {
 const productSchema = z.object({
   name: z.string().min(2, "Название товара должно содержать не менее 2 символов"),
   volume: z.string().optional(),
-  price: z.coerce.number().positive("Цена должна быть положительным числом").optional(), // Price can be optional visually, but required logic might exist elsewhere
+  // Allow 0 or positive for price, handle string conversion
+  price: z.string()
+        .refine((val) => /^\d*([.,]\d+)?$/.test(val.trim()) || val.trim() === '', "Цена должна быть числом")
+        .transform((val) => val.trim() === '' ? undefined : parseFloat(val.replace(',', '.'))) // Convert to number or undefined
+        .refine((val) => val === undefined || val >= 0, "Цена должна быть 0 или больше")
+        .optional(),
   imageUrl: z.string().url("Должен быть действительный URL").optional().or(z.literal('')),
   dataAiHint: z.string().optional(),
 });
+
 
 type ProductFormData = z.infer<typeof productSchema>;
 type SortOption = 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc' | 'popularity-desc';
@@ -119,7 +125,26 @@ const AddProductForm: React.FC<{
       <div className="space-y-4 flex-grow">
         <FormField control={form.control} name="name" render={({ field }) => ( <FormItem><FormLabel>Название</FormLabel><FormControl><Input placeholder="например, Латте" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem> )} />
         <FormField control={form.control} name="volume" render={({ field }) => ( <FormItem><FormLabel>Объём (необязательно)</FormLabel><FormControl><Input placeholder="например, 0,3 л" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem> )} />
-        <FormField control={form.control} name="price" render={({ field }) => ( <FormItem><FormLabel>Цена (₽)</FormLabel><FormControl><Input type="text" inputMode="numeric" pattern="[0-9]*([\.,][0-9]+)?" placeholder="например, 165" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem> )} />
+        {/* Use text input for price, validation handled by Zod */}
+        <FormField control={form.control} name="price" render={({ field: { onChange, ...restField } }) => (
+             <FormItem>
+               <FormLabel>Цена (₽)</FormLabel>
+               <FormControl>
+                 {/* Convert number back to string for input value */}
+                 <Input
+                   type="text"
+                   inputMode="decimal"
+                   pattern="[0-9]*([.,][0-9]+)?"
+                   placeholder="например, 165"
+                   onChange={(e) => onChange(e.target.value)} // Pass the string value
+                   value={restField.value !== undefined ? String(restField.value).replace('.', ',') : ''} // Display with comma if value exists
+                   {...restField} // Pass other field props like name, onBlur, ref
+                 />
+               </FormControl>
+               <FormMessage />
+             </FormItem>
+           )}
+         />
         <FormField control={form.control} name="imageUrl" render={({ field }) => ( <FormItem><FormLabel>URL изображения (необязательно)</FormLabel><FormControl><Input placeholder="https://..." {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem> )} />
         <FormField control={form.control} name="dataAiHint" render={({ field }) => ( <FormItem><FormLabel>Подсказка изображения (необязательно)</FormLabel><FormControl><Input placeholder="например, латте арт" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem> )} />
       </div>
@@ -324,18 +349,19 @@ export function ProductManagement() {
     if (!isClient) return;
     setIsLoading(true);
 
-    // Ensure price is defined before adding
+    // Ensure price is defined (or 0 is allowed) before adding
     if (data.price === undefined) {
-        toast({ title: "Ошибка", description: "Цена товара должна быть указана.", variant: "destructive" });
+        toast({ title: "Ошибка", description: "Цена товара должна быть указана (можно 0).", variant: "destructive" });
         setIsLoading(false);
         return;
     }
+
 
     // Data for the sheet (without ID)
     const productDataForSheet: Omit<Product, 'id'> = {
       name: data.name,
       volume: data.volume || undefined,
-      price: data.price, // Already checked it's defined
+      price: data.price, // Already checked it's defined (or 0)
       imageUrl: data.imageUrl || undefined,
       // Auto-generate hint if empty
       dataAiHint: data.dataAiHint || [data.name.toLowerCase(), data.volume?.replace(/[^0-9.,]/g, '')].filter(Boolean).slice(0, 2).join(' ') || data.name.toLowerCase(),
@@ -464,18 +490,18 @@ export function ProductManagement() {
     const originalProduct = products.find(p => p.id === editingProductId);
     if (!originalProduct) return;
 
-     // Ensure price is defined before updating
+     // Ensure price is defined (or 0) before updating
     if (data.price === undefined) {
-        toast({ title: "Ошибка", description: "Цена товара должна быть указана.", variant: "destructive" });
+        toast({ title: "Ошибка", description: "Цена товара должна быть указана (можно 0).", variant: "destructive" });
         return;
     }
 
 
-    // Data for sheet update (without ID) - use original name/volume to find the row
+    // Data for sheet update (without ID)
     const productDataForSheet: Omit<Product, 'id'> = {
         name: data.name,
         volume: data.volume || undefined,
-        price: data.price, // Already checked if defined
+        price: data.price, // Already checked if defined (or 0)
         imageUrl: data.imageUrl || undefined,
         dataAiHint: data.dataAiHint || originalProduct.dataAiHint || [data.name.toLowerCase(), data.volume?.replace(/[^0-9.,]/g, '')].filter(Boolean).slice(0, 2).join(' ') || data.name.toLowerCase(),
       };
@@ -520,8 +546,12 @@ export function ProductManagement() {
     cancelEditing(); // Close edit form
 
     // Update the sheet using original name/volume to find row, send new data
-    // We pass the data intended for the sheet, not the local state object
-    const success = await updateProductInSheet(productDataForSheet);
+    const success = await updateProductInSheet({
+        originalName: originalProduct.name,
+        originalVolume: originalProduct.volume,
+        newData: productDataForSheet // Pass the new data for the sheet
+    });
+
     setIsLoading(false); // Finish loading
 
     if (success) {
@@ -529,7 +559,7 @@ export function ProductManagement() {
       // Potentially reload to ensure perfect sync, but optimistic should be ok most times
       // await loadProducts(false);
     } else {
-      toast({ title: "Ошибка обновления", description: `Не удалось обновить товар "${data.name}" в Google Sheet. Восстановление...`, variant: "destructive" });
+      toast({ title: "Ошибка обновления", description: `Не удалось обновить товар "${originalProduct.name}" в Google Sheet. Восстановление...`, variant: "destructive" });
       // Rollback UI change if update failed
       setProducts((prevProducts) =>
         prevProducts.map((p) => (p.id === editingProductId ? originalProduct : p))
