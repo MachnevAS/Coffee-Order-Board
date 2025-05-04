@@ -1,4 +1,4 @@
-'use client';
+'use client'; // Add 'use client' for hooks
 
 import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -46,7 +46,9 @@ export default function LoginPage() {
           title: 'Вход выполнен',
           description: 'Добро пожаловать!',
         });
+        // Ensure redirection happens after state updates related to login
         router.push('/'); // Redirect to home page after successful login
+        router.refresh(); // Force refresh to ensure layout/auth state is updated
       } else {
         setError('Неверный логин или пароль');
         toast({

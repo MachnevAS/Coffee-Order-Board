@@ -36,7 +36,7 @@ import { ProductCard } from './product-card';
 import { LOCAL_STORAGE_ORDERS_KEY, LOCAL_STORAGE_ORDER_BUILDER_SORT_KEY } from '@/lib/constants';
 import { fetchProductsFromSheet } from '@/services/google-sheets-service'; // Import sheet service
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-
+import { useDebounce } from '@/hooks/use-debounce'; // Import debounce hook
 
 interface OrderItem extends Product {
   quantity: number;
@@ -90,7 +90,7 @@ const ProductGrid: React.FC<{
   onAddToOrder: (product: Product) => void; // Pass full product with local ID
   onRemoveFromOrder: (productId: string) => void; // Pass local ID
   isLoading?: boolean;
-}> = ({ products, orderQuantities, topProductsRanking, onAddToOrder, onRemoveFromOrder, isLoading }) => {
+}> = React.memo(({ products, orderQuantities, topProductsRanking, onAddToOrder, onRemoveFromOrder, isLoading }) => {
   if (isLoading) {
     return <p className="text-muted-foreground">Загрузка товаров...</p>;
   }
@@ -112,7 +112,9 @@ const ProductGrid: React.FC<{
       ))}
     </div>
   );
-};
+});
+ProductGrid.displayName = 'ProductGrid'; // Add display name
+
 
 // Extracted Order Details Component
 const OrderDetails: React.FC<{
@@ -128,7 +130,7 @@ const OrderDetails: React.FC<{
   isSheet?: boolean;
   orderCardTitleId: string;
   orderSheetTitleId: string;
-}> = ({
+}> = React.memo(({
   order,
   totalPrice,
   selectedPaymentMethod,
@@ -162,10 +164,9 @@ const OrderDetails: React.FC<{
                >
                  <div className="flex-grow overflow-hidden mr-1">
                    <span className="font-medium block truncate">{item.name} {item.volume && <span className="text-xs text-muted-foreground">({item.volume})</span>}</span>
-                   <span className=" text-xs md:text-sm whitespace-nowrap font-sans">{(item.price ?? 0 * item.quantity).toFixed(0)} ₽</span>
+                   <span className=" text-xs md:text-sm whitespace-nowrap font-sans">{((item.price ?? 0) * item.quantity).toFixed(0)} ₽</span> {/* Corrected calculation */}
                  </div>
                  <div className="flex items-center gap-1 md:gap-1 flex-shrink-0">
-                   {/* Use local ID for handlers */}
                    <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7" onClick={() => onRemoveFromOrder(item.id)}>
                      <MinusCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
                      <span className="sr-only">Убрать 1 {item.name}</span>
@@ -173,12 +174,10 @@ const OrderDetails: React.FC<{
                    <Badge variant="secondary" className="px-1.5 py-0.5 text-xs md:text-sm font-medium min-w-[24px] justify-center font-sans">
                      {item.quantity}
                    </Badge>
-                   {/* Pass full item (with local ID) to addToOrder */}
                    <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7" onClick={() => onAddToOrder(item)}>
                      <PlusCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
                      <span className="sr-only">Добавить 1 {item.name}</span>
                    </Button>
-                   {/* Use local ID for removeEntireItem */}
                    <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7 text-destructive/80 hover:text-destructive hover:bg-destructive/10 ml-1" onClick={() => onRemoveEntireItem(item.id)}>
                      <Trash2 className="h-3.5 w-3.5" />
                      <span className="sr-only">Удалить {item.name} из заказа</span>
@@ -245,20 +244,23 @@ const OrderDetails: React.FC<{
       )}
     </CardFooter>
   </>
-);
+));
+OrderDetails.displayName = 'OrderDetails'; // Add display name
 
 
 export function OrderBuilder() {
   // --- States ---
-  const [products, setProducts] = useState<Product[]>([]); // Holds products with local IDs
-  const [order, setOrder] = useState<OrderItem[]>([]); // Holds order items with local IDs
+  const [products, setProducts] = useState<Product[]>([]);
+  const [order, setOrder] = useState<OrderItem[]>([]);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>("");
+  const debouncedSearchTerm = useDebounce(searchTerm, 300); // Debounce search input
   const [sortOption, setSortOption] = useState<SortOption>('name-asc');
   const [popularityVersion, setPopularityVersion] = useState<number>(0);
   const [isClient, setIsClient] = useState(false);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [errorLoading, setErrorLoading] = useState<string | null>(null); // State for loading errors
 
   // --- Hooks ---
   const { toast } = useToast();
@@ -266,32 +268,30 @@ export function OrderBuilder() {
   const orderCardTitleId = React.useId();
 
   // --- Fetch Products Function ---
-  const loadProducts = useCallback(async (showLoading = true) => {
-      if (showLoading) setIsLoading(true);
+  const loadProducts = useCallback(async (showLoadingIndicator = true) => {
+      if (showLoadingIndicator) setIsLoading(true);
+      setErrorLoading(null); // Clear previous errors
       try {
-          const fetchedProducts = await fetchProductsFromSheet(); // Fetches products with local IDs
+          const fetchedProducts = await fetchProductsFromSheet();
           setProducts(fetchedProducts);
           // Update order items if product details changed (e.g., price)
-          setOrder(prevOrder => {
-              const updatedOrder = prevOrder.map(orderItem => {
-                  // Find the corresponding product in the newly fetched list using local ID
-                  const updatedProduct = fetchedProducts.find(p => p.id === orderItem.id);
-                  // If found, update the order item; otherwise, remove it (product might have been deleted)
-                  return updatedProduct ? { ...updatedProduct, quantity: orderItem.quantity } : null;
-              }).filter(item => item !== null) as OrderItem[];
-              return updatedOrder;
-          });
-      } catch (error) {
+          setOrder(prevOrder => prevOrder.map(orderItem => {
+              const updatedProduct = fetchedProducts.find(p => p.id === orderItem.id);
+              return updatedProduct ? { ...updatedProduct, quantity: orderItem.quantity } : null;
+          }).filter((item): item is OrderItem => item !== null)); // Type assertion
+      } catch (error: any) {
           console.error("Failed to load products:", error);
+          const errorMessage = error.message || "Не удалось получить список товаров из Google Sheets.";
+          setErrorLoading(errorMessage); // Store error message
           toast({
               title: "Ошибка загрузки товаров",
-              description: "Не удалось получить список товаров из Google Sheets.",
+              description: errorMessage,
               variant: "destructive",
           });
-          setProducts([]);
+          setProducts([]); // Clear products on error
           setOrder([]); // Clear order on error
       } finally {
-          if (showLoading) setIsLoading(false);
+          if (showLoadingIndicator) setIsLoading(false);
       }
   }, [toast]); // Include toast in dependencies
 
@@ -307,6 +307,7 @@ export function OrderBuilder() {
         if (storedSortOption && ['name-asc', 'name-desc', 'price-asc', 'price-desc', 'popularity-desc'].includes(storedSortOption)) {
             setSortOption(storedSortOption as SortOption);
         } else {
+            // Set default if not found or invalid
             localStorage.setItem(LOCAL_STORAGE_ORDER_BUILDER_SORT_KEY, 'name-asc');
             setSortOption('name-asc');
         }
@@ -316,7 +317,10 @@ export function OrderBuilder() {
 
     // Listener for order changes to update popularity
     const handleOrderStorageChange = (event: StorageEvent) => {
-      if (event.key === LOCAL_STORAGE_ORDERS_KEY) { setPopularityVersion(v => v + 1); }
+      if (event.key === LOCAL_STORAGE_ORDERS_KEY) {
+        console.log("OrderBuilder: Detected order storage change, updating popularity version.");
+        setPopularityVersion(v => v + 1);
+      }
     };
     window.addEventListener('storage', handleOrderStorageChange);
     return () => window.removeEventListener('storage', handleOrderStorageChange);
@@ -331,42 +335,45 @@ export function OrderBuilder() {
   }, [sortOption, isClient]);
 
 
-  // Update total price whenever order changes
+  // Calculate total price whenever order or client state changes
   const totalPrice = useMemo(() => {
-    if (!isClient) return 0;
+    // if (!isClient) return 0; // This check might be redundant if component only renders client-side after mount
     return order.reduce((sum, item) => sum + (item.price ?? 0) * item.quantity, 0);
-  }, [order, isClient]);
+  }, [order]); // Removed isClient dependency as reduce works fine without it
 
 
   // --- Memoized calculations ---
 
   // Calculate popularity map using Name|Volume keys
   const popularityNameVolumeMap = useMemo(() => {
-      if (!isClient) return new Map<string, number>();
+      console.log("OrderBuilder: Recalculating popularity map, version:", popularityVersion);
+      // if (!isClient) return new Map<string, number>(); // Redundant if client-side only
       return calculatePopularityNameVolumeMap();
-  }, [isClient, popularityVersion]);
+  }, [popularityVersion]); // Dependency only on popularityVersion
 
   // Map popularity to local product IDs and get ranking
   const topProductsRanking = useMemo(() => {
-    if (!isClient) return new Map<string, number>();
+    // if (!isClient) return new Map<string, number>(); // Redundant
     const productIdPopularityMap = mapPopularityToProductId(products, popularityNameVolumeMap);
     const sortedByPopularity = Array.from(productIdPopularityMap.entries())
       .sort(([, countA], [, countB]) => countB - countA);
     const ranking = new Map<string, number>();
+    // Get top 3 ranks
     sortedByPopularity.slice(0, 3).forEach(([productId], index) => {
       ranking.set(productId, index + 1);
     });
+    console.log("OrderBuilder: Calculated top product rankings:", ranking);
     return ranking;
-  }, [products, popularityNameVolumeMap, isClient]);
+  }, [products, popularityNameVolumeMap]); // Dependencies: products and the map itself
 
-  // Filter and sort products based on local state
+  // Filter and sort products based on local state and debounced search term
   const filteredAndSortedProducts = useMemo(() => {
-    if (!isClient) return [];
+    // if (!isClient) return []; // Redundant
     let result = [...products];
 
-    // Filter
-    if (searchTerm) {
-      const lowerCaseSearchTerm = searchTerm.toLowerCase();
+    // Filter using debounced term
+    if (debouncedSearchTerm) {
+      const lowerCaseSearchTerm = debouncedSearchTerm.toLowerCase();
       result = result.filter(product =>
         product.name.toLowerCase().includes(lowerCaseSearchTerm) ||
         product.volume?.toLowerCase().includes(lowerCaseSearchTerm)
@@ -380,6 +387,7 @@ export function OrderBuilder() {
        case 'price-asc': result.sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity)); break;
        case 'price-desc': result.sort((a, b) => (b.price ?? -Infinity) - (a.price ?? -Infinity)); break;
        case 'popularity-desc': {
+         // Use the pre-calculated map for efficiency
          const productIdPopularityMap = mapPopularityToProductId(products, popularityNameVolumeMap);
          result.sort((a, b) => {
            const popDiff = (productIdPopularityMap.get(b.id) || 0) - (productIdPopularityMap.get(a.id) || 0);
@@ -390,98 +398,101 @@ export function OrderBuilder() {
        }
     }
     return result;
-  }, [products, searchTerm, sortOption, isClient, popularityNameVolumeMap]);
+  }, [products, debouncedSearchTerm, sortOption, popularityNameVolumeMap]); // Dependencies updated
 
   // Map order items to quantities using local ID
   const orderQuantities = useMemo(() => {
-    const quantities: { [productId: string]: number } = {};
-    order.forEach(item => {
+    return order.reduce((quantities, item) => {
       quantities[item.id] = item.quantity;
-    });
-    return quantities;
+      return quantities;
+    }, {} as { [productId: string]: number });
   }, [order]);
 
 
-  // --- Event Handlers ---
+  // --- Event Handlers (using useCallback for optimization) ---
 
   const handleSetSortOption = useCallback((newSortOption: SortOption) => {
     setSortOption(newSortOption);
   }, []);
 
-  // Add product to order using local ID
   const addToOrder = useCallback((product: Product) => {
     setOrder((prevOrder) => {
-      const existingItem = prevOrder.find((item) => item.id === product.id);
-      if (existingItem) {
-        return prevOrder.map((item) =>
-          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
-        );
+      const existingItemIndex = prevOrder.findIndex((item) => item.id === product.id);
+      if (existingItemIndex > -1) {
+        const updatedOrder = [...prevOrder];
+        updatedOrder[existingItemIndex] = {
+          ...updatedOrder[existingItemIndex],
+          quantity: updatedOrder[existingItemIndex].quantity + 1
+        };
+        return updatedOrder;
       } else {
-        const price = product.price !== undefined ? product.price : 0;
-        // Add the full product object (including local ID) to the order
+        const price = product.price ?? 0; // Ensure price is a number
         return [...prevOrder, { ...product, price, quantity: 1 }];
       }
     });
   }, []);
 
-  // Remove one item from order using local ID
   const removeFromOrder = useCallback((productId: string) => {
     setOrder((prevOrder) => {
-      const existingItem = prevOrder.find((item) => item.id === productId);
-      if (existingItem && existingItem.quantity > 1) {
-        return prevOrder.map((item) =>
-          item.id === productId ? { ...item, quantity: item.quantity - 1 } : item
-        );
-      } else {
-        return prevOrder.filter((item) => item.id !== productId);
+      const existingItemIndex = prevOrder.findIndex((item) => item.id === productId);
+      if (existingItemIndex > -1) {
+        const currentQuantity = prevOrder[existingItemIndex].quantity;
+        if (currentQuantity > 1) {
+          const updatedOrder = [...prevOrder];
+          updatedOrder[existingItemIndex] = { ...updatedOrder[existingItemIndex], quantity: currentQuantity - 1 };
+          return updatedOrder;
+        } else {
+          // Remove item if quantity becomes 0
+          return prevOrder.filter((item) => item.id !== productId);
+        }
       }
+      return prevOrder; // Return previous state if item not found
     });
   }, []);
 
-  // Remove entire item line from order using local ID
   const removeEntireItem = useCallback((productId: string) => {
     setOrder((prevOrder) => prevOrder.filter((item) => item.id !== productId));
   }, []);
 
-  // Clear the entire order
   const clearOrder = useCallback(() => {
     setOrder([]);
     setSelectedPaymentMethod(null);
   }, []);
 
-  // Handle checkout
-  const handleCheckout = useCallback(() => {
-    if (!isClient) return;
+  const handleSelectPaymentMethod = useCallback((method: PaymentMethod) => {
+      setSelectedPaymentMethod(method);
+  }, []);
 
-    if (order.length === 0) { /* ... validation ... */
+  const handleCheckout = useCallback(() => {
+    // if (!isClient) return; // Redundant check
+
+    if (order.length === 0) {
       toast({ title: "Заказ пуст", description: "Пожалуйста, добавьте товары в заказ.", variant: "destructive" });
       return;
     }
-    if (!selectedPaymentMethod) { /* ... validation ... */
+    if (!selectedPaymentMethod) {
       toast({ title: "Выберите способ оплаты", description: "Пожалуйста, укажите способ оплаты заказа.", variant: "destructive" });
       return;
     }
 
-    // Prepare order data for storage, keeping Name/Volume for potential analysis
     const orderData: Order = {
       id: `order_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       items: order.map(item => ({
-        id: item.id, // Store local ID used at time of order? Or remove if Name/Volume is primary key? For now, keep it.
+        id: item.id, // Keep local ID
         name: item.name,
         volume: item.volume,
         price: item.price ?? 0,
         quantity: item.quantity,
       })),
-      totalPrice: totalPrice,
+      totalPrice: totalPrice, // Use memoized total price
       timestamp: new Date().toISOString(),
       paymentMethod: selectedPaymentMethod,
     };
 
-    // Save to localStorage
     try {
       let pastOrders: Order[] = [];
       const storedOrders = localStorage.getItem(LOCAL_STORAGE_ORDERS_KEY);
-      if (storedOrders) { /* ... parse existing orders ... */
+      if (storedOrders) {
         try {
           const parsed = JSON.parse(storedOrders);
           if (Array.isArray(parsed)) pastOrders = parsed;
@@ -491,8 +502,7 @@ export function OrderBuilder() {
       const newOrdersJson = JSON.stringify(pastOrders);
       localStorage.setItem(LOCAL_STORAGE_ORDERS_KEY, newOrdersJson);
 
-      // Dispatch event and trigger popularity update
-      window.dispatchEvent(new StorageEvent('storage', { key: LOCAL_STORAGE_ORDERS_KEY, newValue: newOrdersJson, storageArea: localStorage, }));
+      // Manually trigger popularity update *after* saving
       setPopularityVersion(v => v + 1);
 
       toast({ title: "Заказ оформлен!", description: `Итого: ${totalPrice.toFixed(0)} ₽ (${selectedPaymentMethod}). Ваш заказ сохранен.` });
@@ -502,49 +512,26 @@ export function OrderBuilder() {
       console.error("Failed to save order:", error);
       toast({ title: "Ошибка оформления заказа", description: "Не удалось сохранить заказ.", variant: "destructive" });
     }
-  }, [isClient, order, selectedPaymentMethod, totalPrice, toast, clearOrder]);
+  }, [order, selectedPaymentMethod, totalPrice, toast, clearOrder]); // Dependencies updated
 
-  // Handler for the refresh button
+
   const handleRefresh = useCallback(async () => {
-      await loadProducts();
-      toast({ title: "Список обновлен", description: "Данные товаров загружены из Google Sheets." });
-  }, [loadProducts, toast]);
+      await loadProducts(true); // Pass true to show loading indicator
+      if (!errorLoading) { // Only show success toast if no error occurred during loading
+         toast({ title: "Список обновлен", description: "Данные товаров загружены из Google Sheets." });
+      }
+  }, [loadProducts, toast, errorLoading]);
 
 
   // --- SSR Loading State ---
-   if (!isClient) { /* ... SSR Loading UI ... */
+   if (!isClient) {
+     // Return a simplified loading skeleton or null for SSR
+     // This avoids running hooks and complex logic on the server
      return (
        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-         <div className="lg:col-span-2">
-           <div className="flex justify-between items-center mb-4">
-              <h2 className="text-2xl font-semibold text-primary">Доступные товары</h2>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" disabled>
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-              </Button>
-           </div>
-           <div className="flex gap-2 mb-4">
-             <div className="relative flex-grow">
-               <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-               <Input placeholder="Поиск товаров..." value="" className="pl-8 pr-8 h-9" disabled />
-             </div>
-             <Button variant="outline" size="sm" className="h-9 px-3" disabled>
-               <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" />
-               Сортировать
-             </Button>
-           </div>
-           <p className="text-muted-foreground">Загрузка товаров...</p>
-         </div>
+         <div className="lg:col-span-2"><p>Загрузка конструктора...</p></div>
          <div className="lg:col-span-1">
-           <Card className="shadow-lg lg:sticky lg:top-8 max-h-[calc(100vh-4rem)] flex flex-col">
-             <CardHeader aria-labelledby={orderCardTitleId}>
-               <CardTitle id={orderCardTitleId} className="flex items-center justify-between text-xl">
-                 <span>Текущий заказ</span>
-               </CardTitle>
-             </CardHeader>
-             <CardContent>
-               <p className="text-muted-foreground text-center py-4">Загрузка...</p>
-             </CardContent>
-           </Card>
+           <Card className="shadow-lg lg:sticky lg:top-8"><CardHeader><CardTitle>Текущий заказ</CardTitle></CardHeader><CardContent><p>Загрузка...</p></CardContent></Card>
          </div>
        </div>
      );
@@ -553,7 +540,7 @@ export function OrderBuilder() {
 
   // --- Main Render Logic (Client-Side) ---
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8 pb-16 lg:pb-0">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8 pb-16 lg:pb-0"> {/* Increased pb for floating button */}
       {/* Product List */}
       <div className="lg:col-span-2">
          <div className="flex justify-between items-center mb-4">
@@ -578,8 +565,8 @@ export function OrderBuilder() {
             <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Поиск товаров..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              value={searchTerm} // Use the direct state value for the input
+              onChange={(e) => setSearchTerm(e.target.value)} // Update the direct state on change
               className="pl-8 pr-8 h-9"
               disabled={isLoading}
             />
@@ -608,15 +595,22 @@ export function OrderBuilder() {
           </DropdownMenu>
         </div>
 
+        {/* Show error message if loading failed */}
+        {errorLoading && !isLoading && (
+          <p className="text-destructive text-center py-4">Ошибка загрузки: {errorLoading}</p>
+        )}
+
         {/* Product Grid */}
-        <ProductGrid
-          products={filteredAndSortedProducts}
-          orderQuantities={orderQuantities}
-          topProductsRanking={topProductsRanking}
-          onAddToOrder={addToOrder}
-          onRemoveFromOrder={removeFromOrder} // Pass the handler for removing by local ID
-          isLoading={isLoading}
-        />
+        {!errorLoading && (
+            <ProductGrid
+            products={filteredAndSortedProducts}
+            orderQuantities={orderQuantities}
+            topProductsRanking={topProductsRanking}
+            onAddToOrder={addToOrder}
+            onRemoveFromOrder={removeFromOrder}
+            isLoading={isLoading}
+            />
+        )}
       </div>
 
       {/* Mobile Order Sheet Trigger */}
@@ -641,12 +635,14 @@ export function OrderBuilder() {
           <SheetContent
             side="bottom"
             className="rounded-t-lg h-[75vh] flex flex-col p-0"
-            aria-labelledby={orderSheetTitleId}
-            aria-describedby={undefined}
+            aria-labelledby={orderSheetTitleId} // Use label ID
+            aria-describedby={undefined} // No description needed if title is present
           >
              <SheetHeader className="p-3 md:p-4 border-b text-left">
-                 <VisuallyHidden><SheetTitle id={orderSheetTitleId}>Текущий заказ</SheetTitle></VisuallyHidden>
-                 <p className="text-lg font-semibold text-foreground" aria-hidden="true">Текущий заказ</p>
+                 {/* Visible title for accessibility, visually hidden can be used if design requires */}
+                 <SheetTitle id={orderSheetTitleId}>Текущий заказ</SheetTitle>
+                 {/* <VisuallyHidden><SheetTitle id={orderSheetTitleId}>Текущий заказ</SheetTitle></VisuallyHidden> */}
+                 {/* <p className="text-lg font-semibold text-foreground" aria-hidden="true">Текущий заказ</p> */}
              </SheetHeader>
             <OrderDetails
               isSheet={true}
@@ -656,15 +652,13 @@ export function OrderBuilder() {
               onRemoveFromOrder={removeFromOrder}
               onAddToOrder={addToOrder}
               onRemoveEntireItem={removeEntireItem}
-              onSelectPaymentMethod={setSelectedPaymentMethod}
+              onSelectPaymentMethod={handleSelectPaymentMethod} // Use handler
               onCheckout={handleCheckout}
               onClearOrder={clearOrder}
-              orderCardTitleId={orderCardTitleId}
+              orderCardTitleId={orderCardTitleId} // Pass IDs for potential aria links if needed
               orderSheetTitleId={orderSheetTitleId}
             />
-             <SheetClose asChild>
-                <VisuallyHidden><button>Закрыть</button></VisuallyHidden>
-            </SheetClose>
+             {/* SheetClose is implicitly handled by SheetContent's X button */}
           </SheetContent>
         </Sheet>
       </div>
@@ -682,7 +676,7 @@ export function OrderBuilder() {
             onRemoveFromOrder={removeFromOrder}
             onAddToOrder={addToOrder}
             onRemoveEntireItem={removeEntireItem}
-            onSelectPaymentMethod={setSelectedPaymentMethod}
+            onSelectPaymentMethod={handleSelectPaymentMethod} // Use handler
             onCheckout={handleCheckout}
             onClearOrder={clearOrder}
             orderCardTitleId={orderCardTitleId}
