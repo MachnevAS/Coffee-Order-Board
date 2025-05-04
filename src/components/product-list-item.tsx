@@ -94,10 +94,10 @@ export function ProductListItem({
             <div className="overflow-hidden flex-grow">
                 <p className="font-medium truncate text-sm md:text-base">{product.name}</p>
                 {(product.volume || product.price !== undefined) && (
-                    // Use font-sans for price/currency
+                    // Use font-sans for price/currency and handle undefined price
                     <p className="text-xs md:text-sm text-muted-foreground font-sans">
                         {product.volume && <span>{product.volume} / </span>}
-                        {product.price.toFixed(0)} ₽
+                        {(product.price !== undefined ? product.price.toFixed(0) : 'N/A')} ₽
                     </p>
                 )}
             </div>

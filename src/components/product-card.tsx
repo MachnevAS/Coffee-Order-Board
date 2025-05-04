@@ -91,7 +91,10 @@ export function ProductCard({ product, onAddToOrder, onRemoveFromOrder, orderQua
                  {product.name} {product.volume && <span className="text-muted-foreground font-normal">({product.volume})</span>}
              </CardTitle>
          </div>
-         <p className="text-sm md:text-base text-foreground font-semibold whitespace-nowrap flex-shrink-0">{product.price.toFixed(0)} ₽</p> {/* Larger price, nowrap, shrink-0 */}
+         {/* Use font-sans for currency and handle undefined price */}
+         <p className="text-sm md:text-base text-foreground font-semibold whitespace-nowrap flex-shrink-0 font-sans">
+           {(product.price !== undefined ? product.price.toFixed(0) : '0')} ₽
+         </p>
       </CardContent>
       <CardFooter className="p-1.5 md:p-2 pt-0 mt-auto">
         {orderQuantity && orderQuantity > 0 ? (
@@ -131,5 +134,3 @@ export function ProductCard({ product, onAddToOrder, onRemoveFromOrder, orderQua
     </Card>
   );
 }
-
-    
