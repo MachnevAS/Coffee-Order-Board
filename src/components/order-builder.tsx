@@ -8,8 +8,8 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import type { Product } from "@/types/product";
-import type { PaymentMethod, Order, SalesHistoryItem as SalesHistoryItemType } from "@/types/order"; // Renamed SalesHistoryItem to avoid conflict
-import { MinusCircle, PlusCircle, Trash2, CreditCard, Banknote, Smartphone, Search, ShoppingCart, X, ArrowDownAZ, ArrowDownZA, ArrowDown01, ArrowDown10, SlidersHorizontal, TrendingUp } from "lucide-react";
+import type { PaymentMethod, Order, SalesHistoryItem as SalesHistoryItemType } from "@/types/order";
+import { MinusCircle, PlusCircle, Trash2, CreditCard, Banknote, Smartphone, Search, ShoppingCart, X, ArrowDownAZ, ArrowDownZA, ArrowDown01, ArrowDown10, SlidersHorizontal, TrendingUp, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -31,9 +31,12 @@ import {
   SheetClose,
 } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { VisuallyHidden } from '@radix-ui/react-visually-hidden'; // Import VisuallyHidden
+import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { ProductCard } from './product-card';
-import { LOCAL_STORAGE_PRODUCTS_KEY, LOCAL_STORAGE_ORDERS_KEY, LOCAL_STORAGE_ORDER_BUILDER_SORT_KEY } from '@/lib/constants';
+import { LOCAL_STORAGE_ORDERS_KEY, LOCAL_STORAGE_ORDER_BUILDER_SORT_KEY } from '@/lib/constants';
+import { fetchProductsFromSheet } from '@/services/google-sheets-service'; // Import sheet service
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+
 
 interface OrderItem extends Product {
   quantity: number;
@@ -41,7 +44,7 @@ interface OrderItem extends Product {
 
 type SortOption = 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc' | 'popularity-desc';
 
-// Helper function to calculate product popularity
+// Helper function to calculate product popularity (remains using localStorage orders)
 const calculatePopularity = (): Map<string, number> => {
   const popularityMap = new Map<string, number>();
   try {
@@ -54,7 +57,6 @@ const calculatePopularity = (): Map<string, number> => {
             popularityMap.set(item.id, (popularityMap.get(item.id) || 0) + item.quantity);
           });
         });
-        // console.log("Popularity map calculated:", Object.fromEntries(popularityMap));
       } else {
          console.warn("Invalid order data found in localStorage for popularity.");
       }
@@ -72,7 +74,12 @@ const ProductGrid: React.FC<{
   topProductsRanking: Map<string, number>;
   onAddToOrder: (product: Product) => void;
   onRemoveFromOrder: (productId: string) => void;
-}> = ({ products, orderQuantities, topProductsRanking, onAddToOrder, onRemoveFromOrder }) => {
+  isLoading?: boolean; // Add isLoading prop
+}> = ({ products, orderQuantities, topProductsRanking, onAddToOrder, onRemoveFromOrder, isLoading }) => {
+  if (isLoading) {
+    // Optionally show a loading skeleton or message
+    return <p className="text-muted-foreground">Загрузка товаров...</p>;
+  }
   if (products.length === 0) {
     return <p className="text-muted-foreground">Товары по вашему запросу не найдены.</p>;
   }
@@ -127,7 +134,8 @@ const OrderDetails: React.FC<{
       "p-0 flex-grow overflow-hidden min-h-0", // Added min-h-0
       isSheet ? "px-3 md:px-4" : "px-4 pt-0" // No pt-0 for card view, use CardHeader padding
     )}>
-       <ScrollArea className={cn("h-full pr-2", isSheet ? "overflow-y-auto" : "lg:max-h-[calc(100vh-20rem)]")} type="auto"> {/* Added conditional max-height for desktop */}
+       {/* Explicitly set overflow-y-auto */}
+       <ScrollArea className={cn("h-full pr-2 overflow-y-auto", isSheet ? "" : "lg:max-h-[calc(100vh-20rem)]")} type="auto">
          {order.length === 0 ? (
            <p className="text-muted-foreground text-center py-3 md:py-4 text-sm">Ваш заказ пуст.</p>
          ) : (
@@ -143,7 +151,7 @@ const OrderDetails: React.FC<{
                  <div className="flex-grow overflow-hidden mr-1">
                    <span className="font-medium block truncate">{item.name} {item.volume && <span className="text-xs text-muted-foreground">({item.volume})</span>}</span>
                    {/* Use font-sans for currency */}
-                   <span className=" text-xs md:text-sm whitespace-nowrap font-sans">{(item.price * item.quantity).toFixed(0)} ₽</span>
+                   <span className=" text-xs md:text-sm whitespace-nowrap font-sans">{(item.price ?? 0 * item.quantity).toFixed(0)} ₽</span>
                  </div>
                  <div className="flex items-center gap-1 md:gap-1 flex-shrink-0">
                    <Button variant="ghost" size="icon" className="h-6 w-6 md:h-7 md:w-7" onClick={() => onRemoveFromOrder(item.id)}>
@@ -239,102 +247,94 @@ export function OrderBuilder() {
   const [popularityVersion, setPopularityVersion] = useState<number>(0);
   const [isClient, setIsClient] = useState(false);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true); // Add loading state
 
   // --- Hooks ---
   const { toast } = useToast();
   const orderSheetTitleId = React.useId();
   const orderCardTitleId = React.useId();
 
+  // --- Fetch Products Function ---
+  const loadProducts = useCallback(async (showLoading = true) => {
+      if (showLoading) setIsLoading(true);
+      try {
+          const fetchedProducts = await fetchProductsFromSheet();
+          setProducts(fetchedProducts);
+          // Reset order if products are reloaded (optional, but avoids inconsistencies)
+          setOrder(prevOrder => {
+              const updatedOrder = prevOrder.map(orderItem => {
+                  const updatedProduct = fetchedProducts.find(p => p.id === orderItem.id);
+                  return updatedProduct ? { ...updatedProduct, quantity: orderItem.quantity } : null;
+              }).filter(item => item !== null) as OrderItem[];
+              return updatedOrder;
+          });
+      } catch (error) {
+          console.error("Failed to load products:", error);
+          toast({
+              title: "Ошибка загрузки товаров",
+              description: "Не удалось получить список товаров из Google Sheets.",
+              variant: "destructive",
+          });
+          setProducts([]); // Clear products on error
+          setOrder([]); // Clear order on error
+      } finally {
+          if (showLoading) setIsLoading(false);
+      }
+  }, [toast]);
+
   // --- Effects ---
 
-  // Initialize client state and load data
+  // Initialize client state, load sort option, and initial products
   useEffect(() => {
     setIsClient(true);
-    let loadedProducts: Product[] = [];
 
     try {
-      const storedProducts = localStorage.getItem(LOCAL_STORAGE_PRODUCTS_KEY);
-      if (storedProducts) {
-        try {
-          const parsedProducts = JSON.parse(storedProducts);
-          if (Array.isArray(parsedProducts) && parsedProducts.every(p => p && typeof p.id === 'string' && typeof p.name === 'string' && typeof p.price === 'number')) {
-            loadedProducts = parsedProducts as Product[];
-          } else {
-            console.warn("OrderBuilder: Stored products invalid structure or empty, initializing as empty.");
-            localStorage.removeItem(LOCAL_STORAGE_PRODUCTS_KEY);
-          }
-        } catch (e) {
-          console.error("OrderBuilder: Failed to parse products from localStorage.", e);
-          localStorage.removeItem(LOCAL_STORAGE_PRODUCTS_KEY);
+        // Load sort option from localStorage
+        const storedSortOption = localStorage.getItem(LOCAL_STORAGE_ORDER_BUILDER_SORT_KEY);
+        if (storedSortOption && ['name-asc', 'name-desc', 'price-asc', 'price-desc', 'popularity-desc'].includes(storedSortOption)) {
+            setSortOption(storedSortOption as SortOption);
+        } else {
+            // Set default if not found or invalid
+            localStorage.setItem(LOCAL_STORAGE_ORDER_BUILDER_SORT_KEY, 'name-asc');
+            setSortOption('name-asc');
         }
-      }
-
-      const storedSortOption = localStorage.getItem(LOCAL_STORAGE_ORDER_BUILDER_SORT_KEY);
-      if (storedSortOption && ['name-asc', 'name-desc', 'price-asc', 'price-desc', 'popularity-desc'].includes(storedSortOption)) {
-        setSortOption(storedSortOption as SortOption);
-      } else {
-        localStorage.setItem(LOCAL_STORAGE_ORDER_BUILDER_SORT_KEY, 'name-asc');
-      }
-
     } catch (lsError) {
-      console.error("OrderBuilder: Error accessing localStorage.", lsError);
-      toast({
-        title: "Ошибка LocalStorage",
-        description: "Не удалось загрузить данные. Настройки могут быть сброшены.",
-        variant: "destructive",
-      });
+        console.error("OrderBuilder: Error accessing localStorage for sort option.", lsError);
+        // No toast here, less critical than data loading
     }
 
-    setProducts(loadedProducts);
-  }, [toast]);
+    // Load initial products
+    loadProducts();
+
+    // Listener for order changes to update popularity
+    const handleOrderStorageChange = (event: StorageEvent) => {
+      if (event.key === LOCAL_STORAGE_ORDERS_KEY) {
+        setPopularityVersion(v => v + 1);
+      }
+    };
+    window.addEventListener('storage', handleOrderStorageChange);
+    return () => {
+      window.removeEventListener('storage', handleOrderStorageChange);
+    };
+  }, [loadProducts]); // Load products on initial mount
+
+  // Persist sort option to localStorage
+  useEffect(() => {
+    if (isClient) {
+      try {
+        localStorage.setItem(LOCAL_STORAGE_ORDER_BUILDER_SORT_KEY, sortOption);
+      } catch (e) {
+        console.error("OrderBuilder: Failed to save sort option to localStorage.", e);
+      }
+    }
+  }, [sortOption, isClient]);
 
 
   // Update total price whenever order changes
   const totalPrice = useMemo(() => {
     if (!isClient) return 0;
-    return order.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    return order.reduce((sum, item) => sum + (item.price ?? 0) * item.quantity, 0);
   }, [order, isClient]);
-
-
-  // Handle storage changes for products and orders
-  useEffect(() => {
-    if (!isClient) return;
-
-    const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === LOCAL_STORAGE_PRODUCTS_KEY) {
-        let updatedProducts: Product[] = [];
-        try {
-          if (event.newValue) {
-            const parsed = JSON.parse(event.newValue);
-            if (Array.isArray(parsed) && parsed.every(p => p && typeof p.id === 'string')) {
-              updatedProducts = parsed;
-            } else {
-              console.warn("OrderBuilder: Invalid data received from storage event for products.");
-            }
-          }
-        } catch (e) {
-          console.error("OrderBuilder: Error processing product storage event:", e);
-        }
-        setProducts(updatedProducts);
-        setOrder(prevOrder => {
-          const updatedOrder = prevOrder.map(orderItem => {
-            const updatedProduct = updatedProducts.find(p => p.id === orderItem.id);
-            return updatedProduct ? { ...updatedProduct, quantity: orderItem.quantity } : null;
-          }).filter(item => item !== null) as OrderItem[];
-          return updatedOrder;
-        });
-      }
-
-      if (event.key === LOCAL_STORAGE_ORDERS_KEY) {
-        setPopularityVersion(v => v + 1);
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-    };
-  }, [isClient]);
 
 
   // --- Memoized calculations ---
@@ -349,7 +349,7 @@ export function OrderBuilder() {
       ranking.set(productId, index + 1);
     });
     return ranking;
-  }, [isClient, popularityVersion]);
+  }, [isClient, popularityVersion]); // Depends on client and order changes
 
   const filteredAndSortedProducts = useMemo(() => {
     if (!isClient) return [];
@@ -370,10 +370,10 @@ export function OrderBuilder() {
         result.sort((a, b) => b.name.localeCompare(a.name));
         break;
       case 'price-asc':
-        result.sort((a, b) => a.price - b.price);
+        result.sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
         break;
       case 'price-desc':
-        result.sort((a, b) => b.price - a.price);
+        result.sort((a, b) => (b.price ?? -Infinity) - (a.price ?? -Infinity));
         break;
       case 'popularity-desc': {
         const popularityMap = calculatePopularity();
@@ -386,7 +386,7 @@ export function OrderBuilder() {
       }
     }
     return result;
-  }, [products, searchTerm, sortOption, isClient, popularityVersion]); // Removed calculatePopularity from deps
+  }, [products, searchTerm, sortOption, isClient, popularityVersion]);
 
   const orderQuantities = useMemo(() => {
     const quantities: { [productId: string]: number } = {};
@@ -401,14 +401,7 @@ export function OrderBuilder() {
 
   const handleSetSortOption = useCallback((newSortOption: SortOption) => {
     setSortOption(newSortOption);
-    if (isClient) {
-      try {
-        localStorage.setItem(LOCAL_STORAGE_ORDER_BUILDER_SORT_KEY, newSortOption);
-      } catch (e) {
-        console.error("OrderBuilder: Failed to save sort option to localStorage.", e);
-      }
-    }
-  }, [isClient]);
+  }, []);
 
   const addToOrder = useCallback((product: Product) => {
     setOrder((prevOrder) => {
@@ -418,7 +411,9 @@ export function OrderBuilder() {
           item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
         );
       } else {
-        return [...prevOrder, { ...product, quantity: 1 }];
+        // Ensure price is defined when adding
+        const price = product.price !== undefined ? product.price : 0; // Default to 0 if undefined
+        return [...prevOrder, { ...product, price, quantity: 1 }];
       }
     });
   }, []);
@@ -463,7 +458,7 @@ export function OrderBuilder() {
         id: item.id,
         name: item.name,
         volume: item.volume,
-        price: item.price,
+        price: item.price ?? 0, // Ensure price is defined
         quantity: item.quantity,
       })),
       totalPrice: totalPrice,
@@ -486,11 +481,14 @@ export function OrderBuilder() {
       const newOrdersJson = JSON.stringify(pastOrders);
       localStorage.setItem(LOCAL_STORAGE_ORDERS_KEY, newOrdersJson);
 
+      // Manually dispatch storage event to trigger updates in other components (like SalesHistory)
       window.dispatchEvent(new StorageEvent('storage', {
         key: LOCAL_STORAGE_ORDERS_KEY,
         newValue: newOrdersJson,
         storageArea: localStorage,
       }));
+       // Manually trigger popularity update
+       setPopularityVersion(v => v + 1);
 
       toast({ title: "Заказ оформлен!", description: `Итого: ${totalPrice.toFixed(0)} ₽ (${selectedPaymentMethod}). Ваш заказ сохранен.` });
       clearOrder();
@@ -501,17 +499,29 @@ export function OrderBuilder() {
     }
   }, [isClient, order, selectedPaymentMethod, totalPrice, toast, clearOrder]);
 
+  // Handler for the refresh button
+  const handleRefresh = useCallback(async () => {
+      await loadProducts();
+      toast({ title: "Список обновлен", description: "Данные товаров загружены из Google Sheets." });
+  }, [loadProducts, toast]);
+
 
   // --- SSR Loading State ---
   if (!isClient) {
+    // Simplified SSR loading state
     return (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2">
-          <h2 className="text-2xl font-semibold mb-4 text-primary">Доступные товары</h2>
+          <div className="flex justify-between items-center mb-4">
+             <h2 className="text-2xl font-semibold text-primary">Доступные товары</h2>
+             <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" disabled>
+                 <RefreshCw className="h-4 w-4 animate-spin" />
+             </Button>
+          </div>
           <div className="flex gap-2 mb-4">
             <div className="relative flex-grow">
               <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Поиск товаров..." value="" className="pl-8 pr-8 h-9" disabled /> {/* Pass empty value */}
+              <Input placeholder="Поиск товаров..." value="" className="pl-8 pr-8 h-9" disabled />
             </div>
             <Button variant="outline" size="sm" className="h-9 px-3" disabled>
               <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" />
@@ -541,7 +551,21 @@ export function OrderBuilder() {
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8 pb-16 lg:pb-0"> {/* Increased pb for floating button */}
       {/* Product List */}
       <div className="lg:col-span-2">
-        <h2 className="text-2xl font-semibold mb-4 text-primary">Доступные товары</h2>
+         <div className="flex justify-between items-center mb-4">
+            <h2 className="text-2xl font-semibold text-primary">Доступные товары</h2>
+            {/* Refresh Button */}
+            <TooltipProvider>
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <Button variant="ghost" size="icon" onClick={handleRefresh} className={cn("h-8 w-8 text-muted-foreground", isLoading && "animate-spin")} disabled={isLoading}>
+                            <RefreshCw className="h-4 w-4" />
+                            <span className="sr-only">Обновить список</span>
+                        </Button>
+                    </TooltipTrigger>
+                    <TooltipContent><p>Обновить список товаров из Google Sheets</p></TooltipContent>
+                </Tooltip>
+            </TooltipProvider>
+         </div>
 
         {/* Search and Sort Controls */}
         <div className="flex gap-2 mb-4">
@@ -552,6 +576,7 @@ export function OrderBuilder() {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-8 pr-8 h-9"
+              disabled={isLoading} // Disable during load
             />
             {searchTerm && (
               <Button
@@ -559,6 +584,7 @@ export function OrderBuilder() {
                 size="icon"
                 className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 onClick={() => setSearchTerm("")}
+                 disabled={isLoading} // Disable during load
               >
                 <X className="h-4 w-4" />
                 <span className="sr-only">Очистить поиск</span>
@@ -568,7 +594,7 @@ export function OrderBuilder() {
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-9 px-3 text-xs sm:text-sm">
+              <Button variant="outline" size="sm" className="h-9 px-3 text-xs sm:text-sm" disabled={isLoading}>
                 <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" />
                 Сортировать
               </Button>
@@ -595,17 +621,15 @@ export function OrderBuilder() {
           </DropdownMenu>
         </div>
 
-        {products.length === 0 ? (
-          <p className="text-muted-foreground">Товары отсутствуют. Добавьте их вручную или загрузите начальный список во вкладке "Управление товарами".</p>
-        ) : (
-          <ProductGrid
-            products={filteredAndSortedProducts}
-            orderQuantities={orderQuantities}
-            topProductsRanking={topProductsRanking}
-            onAddToOrder={addToOrder}
-            onRemoveFromOrder={removeFromOrder}
-          />
-        )}
+        {/* Pass isLoading to ProductGrid */}
+        <ProductGrid
+          products={filteredAndSortedProducts}
+          orderQuantities={orderQuantities}
+          topProductsRanking={topProductsRanking}
+          onAddToOrder={addToOrder}
+          onRemoveFromOrder={removeFromOrder}
+          isLoading={isLoading}
+        />
       </div>
 
       {/* Mobile Order Sheet Trigger */}
@@ -631,13 +655,15 @@ export function OrderBuilder() {
           <SheetContent
             side="bottom"
             className="rounded-t-lg h-[75vh] flex flex-col p-0"
-            aria-labelledby={orderSheetTitleId}
+            aria-labelledby={orderSheetTitleId} // Use aria-labelledby
+            aria-describedby={undefined} // Explicitly remove aria-describedby if not needed
           >
-            <SheetHeader className="p-3 md:p-4 border-b text-left">
-              {/* Use visually hidden title for accessibility */}
-               <VisuallyHidden><SheetTitle id={orderSheetTitleId}>Текущий заказ</SheetTitle></VisuallyHidden>
-               <p className="text-lg font-semibold text-foreground" aria-hidden="true">Текущий заказ</p>
-            </SheetHeader>
+             <SheetHeader className="p-3 md:p-4 border-b text-left">
+                 {/* Use VisuallyHidden for the accessible title */}
+                 <VisuallyHidden><SheetTitle id={orderSheetTitleId}>Текущий заказ</SheetTitle></VisuallyHidden>
+                 {/* Visible title (optional) */}
+                 <p className="text-lg font-semibold text-foreground" aria-hidden="true">Текущий заказ</p>
+             </SheetHeader>
             <OrderDetails
               isSheet={true}
               order={order}
@@ -652,8 +678,10 @@ export function OrderBuilder() {
               orderCardTitleId={orderCardTitleId}
               orderSheetTitleId={orderSheetTitleId}
             />
+            {/* <SheetFooter> ... </SheetFooter> */}
             <SheetClose asChild>
-              <VisuallyHidden><button>Закрыть</button></VisuallyHidden>
+                {/* Use VisuallyHidden for the accessible close button text */}
+                <VisuallyHidden><button>Закрыть</button></VisuallyHidden>
             </SheetClose>
           </SheetContent>
         </Sheet>

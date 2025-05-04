@@ -30,6 +30,12 @@ const nextConfig: NextConfig = {
       }
     ],
   },
+  // Add environment variables for Google Sheets API
+  env: {
+    GOOGLE_SHEETS_API_KEY: process.env.GOOGLE_SHEETS_API_KEY,
+    GOOGLE_SHEET_ID: process.env.GOOGLE_SHEET_ID,
+    GOOGLE_SHEET_NAME: process.env.GOOGLE_SHEET_NAME,
+  },
 };
 
 export default nextConfig;
