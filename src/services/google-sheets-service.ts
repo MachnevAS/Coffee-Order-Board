@@ -12,7 +12,7 @@ import type { Product } from '@/types/product';
 import type { User } from '@/types/user';
 import type { Order, SalesHistoryItem, PaymentMethod } from '@/types/order';
 import { getRawProductData } from '@/lib/product-defaults';
-import { format, parseISO } from 'date-fns'; // Added for date formatting
+import { format, parseISO, isValid as isValidDate } from 'date-fns'; // Added isValidDate
 
 // --- Service Account Authentication ---
 const {
@@ -166,28 +166,22 @@ const rowToOrder = (row): Order | null => {
   let items: SalesHistoryItem[] = [];
   try {
     const itemsString = row[HISTORY_COLUMN_MAP.items] ?? '';
-    if (itemsString.startsWith('[')) { // Check if it's a JSON array string (for backwards compatibility)
-        items = JSON.parse(itemsString).map(item => ({
-          id: item.id || `item_${Date.now()}_${Math.random()}`, // Ensure ID exists
-          name: item.name,
-          volume: item.volume,
-          price: item.price !== undefined ? Number(item.price) : 0,
-          quantity: Number(item.quantity)
-        }));
-    } else if (itemsString.length > 0) { // Parse human-readable string format
-        items = itemsString.split(',').map(itemStr => {
+    if (itemsString.length > 0) {
+        // Split items by ", " (comma and space)
+        items = itemsString.split(', ').map(itemStr => {
             // Regex to match: "ProductName (ProductVolume) xQuantity" or "ProductName xQuantity"
-            // It also captures the price if present: "ProductName (ProductVolume) - PricePerUnit₽ xQuantity"
-            const itemParts = itemStr.trim().match(/(.+?)(?:\s*\((.*?)\))?(?:\s*-\s*([\d.]+?)₽)?\s*x(\d+)/);
+            const itemParts = itemStr.trim().match(/^(.+?)(?:\s+\((.+?)\))?\s+x(\d+)$/);
             if (itemParts) {
                 return {
                     id: `item_${Date.now()}_${Math.random()}`, // Placeholder ID
                     name: itemParts[1].trim(),
                     volume: itemParts[2]?.trim() || undefined,
-                    price: itemParts[3] ? parseFloat(itemParts[3].replace(',', '.')) : 0, 
-                    quantity: parseInt(itemParts[4], 10),
+                    // Price is not reliably available in this string, will be part of order.totalPrice
+                    price: 0, // Set default or fetch from product list if needed elsewhere
+                    quantity: parseInt(itemParts[3], 10),
                 };
             }
+            console.warn(`[GSHEET History] Could not parse item string: "${itemStr}" for order ${row[HISTORY_COLUMN_MAP.orderId]}`);
             return null;
         }).filter((item): item is SalesHistoryItem => item !== null);
     }
@@ -198,27 +192,40 @@ const rowToOrder = (row): Order | null => {
   const totalPriceStr = row[HISTORY_COLUMN_MAP.totalPrice]?.toString().replace(',', '.').trim();
   const isValidTotalPrice = /^\d+(\.\d+)?$/.test(totalPriceStr);
   
-  // Attempt to parse the timestamp from the sheet (which should be 'dd.MM.yyyy HH:mm:ss')
-  // and convert it back to ISO for consistency within the app if needed.
-  // For display, it's already in a good format.
-  let isoTimestamp = row[HISTORY_COLUMN_MAP.timestamp]; // Default to what's in the sheet
-  try {
-    // If the sheet stores 'dd.MM.yyyy HH:mm:ss', we might need to parse it differently
-    // For now, assume it's already a usable string or ISO. If it's 'dd.MM.yyyy HH:mm:ss',
-    // and we need ISO for internal logic, parsing would be:
-    // const parts = row[HISTORY_COLUMN_MAP.timestamp].split(' ');
-    // const dateParts = parts[0].split('.');
-    // const timeParts = parts[1].split(':');
-    // isoTimestamp = new Date(Date.UTC(Number(dateParts[2]), Number(dateParts[1]) - 1, Number(dateParts[0]), Number(timeParts[0]), Number(timeParts[1]), Number(timeParts[2]))).toISOString();
-    // However, for direct use from sheet to SalesHistory component, the original format might be fine.
-  } catch(e) {
-    console.warn(`[GSHEET History] Could not parse timestamp ${row[HISTORY_COLUMN_MAP.timestamp]} into ISO. Using original value.`);
+  let timestamp = row[HISTORY_COLUMN_MAP.timestamp];
+  // Check if timestamp is already in 'dd.MM.yyyy HH:mm:ss' format from the sheet
+  // and attempt to parse it into a valid Date object, then to ISO string for internal consistency
+  if (typeof timestamp === 'string' && /^\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}:\d{2}$/.test(timestamp)) {
+    try {
+      const parts = timestamp.split(' ');
+      const dateParts = parts[0].split('.');
+      const timeParts = parts[1].split(':');
+      const parsedDate = new Date(
+        Number(dateParts[2]), 
+        Number(dateParts[1]) - 1, 
+        Number(dateParts[0]), 
+        Number(timeParts[0]), 
+        Number(timeParts[1]), 
+        Number(timeParts[2])
+      );
+      if (isValidDate(parsedDate)) {
+        timestamp = parsedDate.toISOString();
+      } else {
+        console.warn(`[GSHEET History] Parsed invalid date for order ${row[HISTORY_COLUMN_MAP.orderId]} from sheet timestamp: ${row[HISTORY_COLUMN_MAP.timestamp]}. Using original sheet value.`);
+        timestamp = row[HISTORY_COLUMN_MAP.timestamp]; // Fallback to original if parsing fails or results in invalid date
+      }
+    } catch (e) {
+        console.warn(`[GSHEET History] Could not parse sheet timestamp ${row[HISTORY_COLUMN_MAP.timestamp]} for order ${row[HISTORY_COLUMN_MAP.orderId]}. Using original value. Error:`, e);
+        timestamp = row[HISTORY_COLUMN_MAP.timestamp]; // Fallback
+    }
+  } else if (typeof timestamp === 'string' && !isValidDate(parseISO(timestamp))) {
+      console.warn(`[GSHEET History] Timestamp ${timestamp} for order ${row[HISTORY_COLUMN_MAP.orderId]} is not ISO and not 'dd.MM.yyyy HH:mm:ss'. Using original value.`);
   }
 
 
   return {
     id: row[HISTORY_COLUMN_MAP.orderId],
-    timestamp: isoTimestamp, 
+    timestamp: timestamp, 
     items,
     paymentMethod: row[HISTORY_COLUMN_MAP.paymentMethod] as PaymentMethod,
     totalPrice: isValidTotalPrice ? parseFloat(totalPriceStr) : 0,
@@ -242,15 +249,15 @@ const productToRow = (product) => {
 const orderToRow = (order: Order): string[] => {
   const rowValues = Array(Object.keys(HISTORY_COLUMN_MAP).length).fill('');
   rowValues[HISTORY_COLUMN_MAP.orderId] = order.id;
-  // Format timestamp before writing to sheet
+  
   try {
+    // Order timestamp is expected to be ISO string, format it to 'dd.MM.yyyy HH:mm:ss' for the sheet
     rowValues[HISTORY_COLUMN_MAP.timestamp] = format(parseISO(order.timestamp), 'dd.MM.yyyy HH:mm:ss');
   } catch (e) {
-    console.warn(`[GSHEET History] Could not format timestamp ${order.timestamp}. Using original value.`);
+    console.warn(`[GSHEET History] Could not format ISO timestamp ${order.timestamp} for sheet. Using original value. Error:`, e);
     rowValues[HISTORY_COLUMN_MAP.timestamp] = order.timestamp;
   }
   
-  // Human-readable items string: "Product A (Vol A) xQtyA, Product B xQtyB"
   rowValues[HISTORY_COLUMN_MAP.items] = order.items.map(item => {
     let itemStr = item.name;
     if (item.volume) {
@@ -258,7 +265,7 @@ const orderToRow = (order: Order): string[] => {
     }
     itemStr += ` x${item.quantity}`;
     return itemStr;
-  }).join(', ');
+  }).join(', '); // Use ", " as separator
 
   rowValues[HISTORY_COLUMN_MAP.paymentMethod] = order.paymentMethod;
   rowValues[HISTORY_COLUMN_MAP.totalPrice] = String(order.totalPrice).replace('.', ',');
@@ -800,12 +807,6 @@ export const addOrderToSheet = async (order: Order): Promise<boolean> => {
 
   try {
     console.log(`[GSHEET History] Adding order: "${order.id}"`);
-    // Optional: Check if order ID already exists to prevent duplicates, if needed
-    // const existingRowIndex = await findRowIndexByColumnValue(HISTORY_SHEET_NAME_ONLY, HISTORY_COLUMN_MAP.orderId, order.id, HISTORY_DATA_START_ROW);
-    // if (existingRowIndex !== null) {
-    //   console.warn(`[GSHEET History] Order with ID "${order.id}" already exists. Skipping.`);
-    //   return false;
-    // }
 
     await currentSheets.spreadsheets.values.append({
       spreadsheetId: SHEET_ID,
@@ -897,8 +898,6 @@ export const clearAllOrdersFromSheet = async (): Promise<boolean> => {
       return false;
     }
     
-    // Get the total number of rows in the sheet to determine the range to clear
-    // This is safer than just clearing a large fixed range if the sheet might have other data below
     const sheetMetadata = await currentSheets.spreadsheets.get({
         spreadsheetId: SHEET_ID,
         ranges: [HISTORY_SHEET_NAME_ONLY],
@@ -913,7 +912,6 @@ export const clearAllOrdersFromSheet = async (): Promise<boolean> => {
         return true;
     }
 
-    // Clear rows from data start row to the end of the sheet
     const rangeToClear = `${HISTORY_SHEET_NAME_ONLY}!A${HISTORY_DATA_START_ROW}:F${totalRows}`;
     
     await currentSheets.spreadsheets.values.clear({

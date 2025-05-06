@@ -18,7 +18,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Calendar as CalendarIcon, ExternalLink, Trash2, CreditCard, Banknote, Smartphone, Trash, ArrowUpDown, RefreshCw } from 'lucide-react';
-import { format, parseISO, startOfDay, endOfDay, isValid } from 'date-fns';
+import { format, parseISO, startOfDay, endOfDay, isValid as isValidDate } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import type { DateRange } from 'react-day-picker';
 import type { Order, PaymentMethod } from '@/types/order';
@@ -44,21 +44,12 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 const GOOGLE_SHEET_ID = process.env.NEXT_PUBLIC_GOOGLE_SHEET_ID || process.env.GOOGLE_SHEET_ID;
 const GOOGLE_HISTORY_SHEET_NAME = process.env.NEXT_PUBLIC_GOOGLE_HISTORY_SHEET_NAME || process.env.GOOGLE_HISTORY_SHEET_NAME;
 
-// Function to try and get GID from sheet name (if your sheet names are unique and GID is needed directly)
-// This is a placeholder; in reality, you often get the GID by inspecting the URL when the sheet is open
-// or by using the Sheets API to list sheets and their properties.
-// For constructing a direct link, often just the sheet name in the URL fragment is enough if it's the primary way to identify.
-// However, Google Sheets URLs typically use `gid=SHEET_ID_NUMBER`.
-// If your `GOOGLE_HISTORY_SHEET_NAME` is actually the GID, this can be simplified.
 const getSheetUrlFragment = (sheetNameOrGid: string | undefined) => {
   if (!sheetNameOrGid) return '';
-  // If it's a number, assume it's a GID
   if (/^\d+$/.test(sheetNameOrGid)) {
     return `gid=${sheetNameOrGid}`;
   }
-  // Otherwise, assume it's a sheet name (less reliable for direct linking if not unique or first sheet)
-  // For robust linking, GID is preferred. Here, we'll try to encode it for URL fragment.
-  return `gid=${encodeURIComponent(sheetNameOrGid)}`; // This part might need adjustment based on how your GIDs are stored/used
+  return `gid=${encodeURIComponent(sheetNameOrGid)}`; 
 };
 
 
@@ -70,12 +61,10 @@ const googleSheetHistoryUrl = GOOGLE_SHEET_ID && GOOGLE_HISTORY_SHEET_NAME
 type SortKey = 'timestamp' | 'totalPrice' | 'paymentMethod' | 'employee';
 type SortDirection = 'asc' | 'desc';
 type SortConfig = { key: SortKey; direction: SortDirection } | null;
-const DEFAULT_SORT: SortConfig = { key: 'timestamp', direction: 'desc' }; // Default sort by newest
+const DEFAULT_SORT: SortConfig = { key: 'timestamp', direction: 'desc' }; 
 
-// Форматирование валюты
 const formatCurrency = (amount: number) => `${amount.toFixed(0)} ₽`;
 
-// Иконка способа оплаты
 const PaymentMethodIcon = React.memo(({ method }: { method: PaymentMethod | undefined }) => {
   const iconSize = "h-3.5 w-3.5 md:h-4 md:w-4";
   switch (method) {
@@ -87,7 +76,6 @@ const PaymentMethodIcon = React.memo(({ method }: { method: PaymentMethod | unde
 });
 PaymentMethodIcon.displayName = 'PaymentMethodIcon';
 
-// Иконка сортировки
 const SortIcon = React.memo(({ sortKey, currentSortConfig }: { sortKey: SortKey; currentSortConfig: SortConfig }) => {
   if (!currentSortConfig || currentSortConfig.key !== sortKey) {
     return <ArrowUpDown className="ml-1 h-3 w-3 text-muted-foreground/50" />;
@@ -95,6 +83,32 @@ const SortIcon = React.memo(({ sortKey, currentSortConfig }: { sortKey: SortKey;
   return <ArrowUpDown className={cn("ml-1 h-3 w-3 text-foreground", currentSortConfig.direction === 'desc' && 'rotate-180')} />;
 });
 SortIcon.displayName = 'SortIcon';
+
+// Helper to parse timestamp for sorting
+const parseTimestampForSort = (timestamp: string): Date | null => {
+    if (typeof timestamp === 'string') {
+        // Attempt to parse 'dd.MM.yyyy HH:mm:ss'
+        if (/^\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}:\d{2}$/.test(timestamp)) {
+            const parts = timestamp.split(' ');
+            const dateParts = parts[0].split('.');
+            const timeParts = parts[1].split(':');
+            const date = new Date(
+                Number(dateParts[2]),
+                Number(dateParts[1]) - 1, // Month is 0-indexed
+                Number(dateParts[0]),
+                Number(timeParts[0]),
+                Number(timeParts[1]),
+                Number(timeParts[2])
+            );
+            return isValidDate(date) ? date : null;
+        }
+        // Attempt to parse ISO string
+        const isoDate = parseISO(timestamp);
+        return isValidDate(isoDate) ? isoDate : null;
+    }
+    return null;
+};
+
 
 export function SalesHistory() {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -135,7 +149,6 @@ export function SalesHistory() {
     loadOrders();
   }, [loadOrders]);
 
-  // Filter and sort orders
   const filteredAndSortedOrders = useMemo(() => {
     let filtered = [...orders];
 
@@ -143,22 +156,8 @@ export function SalesHistory() {
       const start = startOfDay(dateRange.from);
       const end = dateRange.to ? endOfDay(dateRange.to) : endOfDay(dateRange.from);
       filtered = filtered.filter((order) => {
-        try {
-          // Try parsing as 'dd.MM.yyyy HH:mm:ss' first, then as ISO
-          let orderDate;
-          if (typeof order.timestamp === 'string' && order.timestamp.includes('.')) { // Likely 'dd.MM.yyyy HH:mm:ss'
-            const parts = order.timestamp.split(' ');
-            const dateParts = parts[0].split('.');
-            const timeParts = parts[1].split(':');
-            orderDate = new Date(Number(dateParts[2]), Number(dateParts[1]) - 1, Number(dateParts[0]), Number(timeParts[0]), Number(timeParts[1]), Number(timeParts[2]));
-          } else { // Assume ISO
-            orderDate = parseISO(order.timestamp);
-          }
-          return isValid(orderDate) && orderDate >= start && orderDate <= end;
-        } catch (e) {
-          console.warn(`Invalid date encountered for order ${order.id}: ${order.timestamp}`);
-          return false;
-        }
+        const orderDate = parseTimestampForSort(order.timestamp);
+        return orderDate && orderDate >= start && orderDate <= end;
       });
     }
 
@@ -169,19 +168,17 @@ export function SalesHistory() {
 
         switch (key) {
           case 'timestamp':
-            try {
-               let dateA, dateB;
-                if (typeof a.timestamp === 'string' && a.timestamp.includes('.')) {
-                    const partsA = a.timestamp.split(' '); const datePartsA = partsA[0].split('.'); const timePartsA = partsA[1].split(':');
-                    dateA = new Date(Number(datePartsA[2]), Number(datePartsA[1]) - 1, Number(datePartsA[0]), Number(timePartsA[0]), Number(timePartsA[1]), Number(timePartsA[2]));
-                } else { dateA = parseISO(a.timestamp); }
-
-                if (typeof b.timestamp === 'string' && b.timestamp.includes('.')) {
-                    const partsB = b.timestamp.split(' '); const datePartsB = partsB[0].split('.'); const timePartsB = partsB[1].split(':');
-                    dateB = new Date(Number(datePartsB[2]), Number(datePartsB[1]) - 1, Number(datePartsB[0]), Number(timePartsB[0]), Number(timePartsB[1]), Number(timePartsB[2]));
-                } else { dateB = parseISO(b.timestamp); }
-                comparison = dateA.getTime() - dateB.getTime();
-            } catch (e) { console.warn("Error parsing dates for sorting:", a.timestamp, b.timestamp); }
+            {
+                const dateA = parseTimestampForSort(a.timestamp);
+                const dateB = parseTimestampForSort(b.timestamp);
+                if (dateA && dateB) {
+                    comparison = dateA.getTime() - dateB.getTime();
+                } else if (dateA) {
+                    comparison = -1; // a comes first if b is invalid
+                } else if (dateB) {
+                    comparison = 1;  // b comes first if a is invalid
+                }
+            }
             break;
           case 'paymentMethod':
             comparison = (a.paymentMethod || '').localeCompare(b.paymentMethod || '', ru.code);
@@ -209,12 +206,12 @@ export function SalesHistory() {
     if (!orderToDelete || isLoading) return;
     
     const orderIdToDelete = orderToDelete.id;
-    setIsLoading(true); // Set loading true during delete operation
+    setIsLoading(true); 
     const success = await deleteOrderFromSheet(orderIdToDelete);
     setOrderToDelete(null);
     
     if (success) {
-      await loadOrders(false); // Reload orders without global loading indicator
+      await loadOrders(false); 
       toast({ 
         title: "Заказ удален", 
         description: `Заказ ${orderIdToDelete} был успешно удален из Google Sheets.`, 
@@ -270,7 +267,7 @@ export function SalesHistory() {
     setSortConfig(prevConfig => {
       if (prevConfig?.key === key) {
         if (prevConfig.direction === 'asc') return { key, direction: 'desc' };
-        if (prevConfig.direction === 'desc') return DEFAULT_SORT; // reset to default
+        if (prevConfig.direction === 'desc') return DEFAULT_SORT; 
       }
       return { key, direction: 'asc' };
     });
@@ -295,20 +292,21 @@ export function SalesHistory() {
   }
   
   const formatDisplayDate = (timestamp: string) => {
-    try {
-      // If the timestamp is in 'dd.MM.yyyy HH:mm:ss' format from sheet, use it directly
-      if (typeof timestamp === 'string' && timestamp.includes('.') && timestamp.includes(':')) {
-         // Further check to ensure it's not an ISO string with milliseconds
-         if (!timestamp.includes('T') && !timestamp.includes('Z')) {
-            return timestamp; // Already in 'dd.MM.yyyy HH:mm:ss'
-         }
-      }
-      // Otherwise, assume ISO and format it
-      return format(parseISO(timestamp), 'dd.MM.yyyy HH:mm:ss', { locale: ru });
-    } catch (e) {
-      console.warn("Failed to format date for display:", timestamp);
-      return timestamp; // Fallback to original if parsing fails
+    // If it's already in 'dd.MM.yyyy HH:mm:ss', just return it
+    if (typeof timestamp === 'string' && /^\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}:\d{2}$/.test(timestamp)) {
+      return timestamp;
     }
+    // Otherwise, try to parse as ISO and format
+    try {
+      const date = parseISO(timestamp);
+      if (isValidDate(date)) {
+        return format(date, 'dd.MM.yyyy HH:mm:ss', { locale: ru });
+      }
+    } catch (e) {
+      // Fallback for other string formats or invalid dates
+    }
+    console.warn("Failed to format date for display, returning original:", timestamp);
+    return timestamp;
   };
 
 
