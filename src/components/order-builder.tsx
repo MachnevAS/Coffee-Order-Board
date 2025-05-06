@@ -325,8 +325,9 @@ export function OrderBuilder() {
 
 
   useEffect(() => {
+    if (!isClient) return; // Ensure this runs only on the client
+
     const fetchPopularity = async () => {
-      if (!isClient) return; // Ensure this runs only on the client
       setIsPopularityLoading(true);
       console.log("OrderBuilder: Fetching popularity map from sheet, version:", popularityVersion);
       try {
@@ -491,6 +492,9 @@ export function OrderBuilder() {
         toast({ title: "Заказ оформлен!", description: `Итого: ${totalPrice.toFixed(0)} ₽ (${selectedPaymentMethod}). Ваш заказ сохранен в Google Sheets.` });
         clearOrder();
         setIsSheetOpen(false);
+        if (sortOption === 'popularity-desc') {
+           setPopularityVersion(v => v + 1); // Trigger popularity recalc if currently sorted by popularity
+        }
       } else {
         toast({ title: "Ошибка оформления заказа", description: "Не удалось сохранить заказ в Google Sheets.", variant: "destructive" });
       }
@@ -500,7 +504,7 @@ export function OrderBuilder() {
     } finally {
       setIsCheckoutProcessing(false);
     }
-  }, [order, selectedPaymentMethod, totalPrice, toast, clearOrder, currentUser]);
+  }, [order, selectedPaymentMethod, totalPrice, toast, clearOrder, currentUser, sortOption]);
 
 
   const handleRefresh = useCallback(async () => {
@@ -631,8 +635,8 @@ export function OrderBuilder() {
               onSelectPaymentMethod={handleSelectPaymentMethod}
               onCheckout={handleCheckout}
               onClearOrder={clearOrder}
-              orderCardTitleId={orderCardTitleId} // This ID is for the desktop card title
-              orderSheetTitleId={orderSheetTitleId} // This ID is for the sheet title (now visually hidden)
+              orderCardTitleId={orderCardTitleId} 
+              orderSheetTitleId={orderSheetTitleId}
               isCheckoutProcessing={isCheckoutProcessing}
             />
           </SheetContent>
@@ -655,7 +659,7 @@ export function OrderBuilder() {
             onCheckout={handleCheckout}
             onClearOrder={clearOrder}
             orderCardTitleId={orderCardTitleId}
-            orderSheetTitleId={orderSheetTitleId} // Pass sheet title ID though not directly used here
+            orderSheetTitleId={orderSheetTitleId} 
             isCheckoutProcessing={isCheckoutProcessing}
           />
         </Card>
@@ -663,4 +667,3 @@ export function OrderBuilder() {
     </div>
   );
 }
-

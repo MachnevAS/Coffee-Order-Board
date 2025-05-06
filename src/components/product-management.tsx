@@ -54,7 +54,7 @@ import {
   addProductToSheet,
   updateProductInSheet,
   deleteProductFromSheet,
-  clearAllProductsFromSheet, // Добавить эту строку
+  clearAllProductsFromSheet, 
   syncRawProductsToSheet,
   fetchOrdersFromSheet as fetchAllOrdersForPopularity
 } from '@/services/google-sheets-service';
@@ -243,9 +243,8 @@ const ProductList = React.memo(({
           onStartEditing={onStartEditing}
           onCancelEditing={onCancelEditing}
           onEditSubmit={onEditSubmit}
-          onRemoveProduct={() => onRemoveProduct(product)} // Pass a function here
+          onRemoveProduct={() => onRemoveProduct(product)} 
           popularityRank={topProductsRanking.get(product.id)}
-          isLoading={isLoading || isEditingLoading} // Pass combined loading state
         />
       ))}
     </ul>
@@ -258,15 +257,17 @@ export function ProductManagement() {
   const [searchTerm, setSearchTerm] = useState<string>("");
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const [sortOption, setSortOption] = useState<SortOption>('name-asc');
-  const [popularityVersion, setPopularityVersion] = useState<number>(0); // Used to trigger re-calc of popularity
+  const [popularityVersion, setPopularityVersion] = useState<number>(0); 
   const [isClient, setIsClient] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isClearAllDialogOpen, setIsClearAllDialogOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true); // For initial load and refresh
-  const [isSubmitting, setIsSubmitting] = useState(false); // For add/edit/delete operations
+  const [isLoading, setIsLoading] = useState(true); 
+  const [isSubmitting, setIsSubmitting] = useState(false); 
   const [errorLoading, setErrorLoading] = useState<string | null>(null);
+  const [resolvedPopularityMap, setResolvedPopularityMap] = useState<Map<string, number>>(new Map());
+  const [isPopularityLoading, setIsPopularityLoading] = useState(false);
 
 
   const { toast } = useToast();
@@ -321,9 +322,6 @@ export function ProductManagement() {
     }
 
     loadProducts();
-    // When an order is placed (handled in OrderBuilder), it will update Google Sheets.
-    // To reflect popularity changes here, we might need a mechanism to refetch popularity,
-    // or simply rely on the popularityVersion state which can be updated after critical actions.
   }, [loadProducts]);
 
   useEffect(() => {
@@ -336,19 +334,28 @@ export function ProductManagement() {
     }
   }, [sortOption, isClient]);
 
-  // Calculate popularity map using Google Sheets
-  const popularityNameVolumeMap = useMemo(async () => {
-    if (!isClient) return new Map<string, number>();
-    console.log("ProductManagement: Recalculating popularity from sheet, version:", popularityVersion);
-    return await calculatePopularityFromSheet();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isClient, popularityVersion]); // Re-calculate when popularityVersion changes
+ useEffect(() => {
+    if (!isClient) return;
 
-
-  const [resolvedPopularityMap, setResolvedPopularityMap] = useState<Map<string, number>>(new Map());
-  useEffect(() => {
-    popularityNameVolumeMap.then(map => setResolvedPopularityMap(map));
-  }, [popularityNameVolumeMap]);
+    const fetchPopularity = async () => {
+      setIsPopularityLoading(true);
+      console.log("ProductManagement: Recalculating popularity from sheet, version:", popularityVersion);
+      try {
+        const map = await calculatePopularityFromSheet();
+        setResolvedPopularityMap(map);
+      } catch (error) {
+        console.error("ProductManagement: Error fetching popularity", error);
+        toast({
+          title: "Ошибка популярности",
+          description: "Не удалось загрузить данные о популярности товаров.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsPopularityLoading(false);
+      }
+    };
+    fetchPopularity();
+  }, [isClient, popularityVersion, toast]);
 
 
   const topProductsRanking = useMemo(() => {
@@ -434,8 +441,8 @@ export function ProductManagement() {
     const success = await addProductToSheet(productDataForSheet);
 
     if (success) {
-      await loadProducts(false); // Reload without global loading indicator
-      setPopularityVersion(v => v + 1); // Update popularity version
+      await loadProducts(false); 
+      setPopularityVersion(v => v + 1); 
       toast({ 
         title: "Товар добавлен", 
         description: `${data.name} ${data.volume || ''} успешно добавлен.` 
@@ -463,7 +470,6 @@ export function ProductManagement() {
     if (!productToDelete || isSubmitting) return;
 
     const productIdentifier = { name: productToDelete.name, volume: productToDelete.volume };
-    const localIdToDelete = productToDelete.id;
 
     setIsSubmitting(true);
     setIsDeleteDialogOpen(false);
@@ -472,8 +478,8 @@ export function ProductManagement() {
     setProductToDelete(null);
 
     if (success) {
-      await loadProducts(false); // Reload
-      setPopularityVersion(v => v + 1); // Update popularity
+      await loadProducts(false); 
+      setPopularityVersion(v => v + 1); 
       toast({ 
         title: "Товар удален", 
         description: `Товар "${productIdentifier.name}" был удален.`, 
@@ -485,7 +491,6 @@ export function ProductManagement() {
         description: `Не удалось удалить товар "${productIdentifier.name}".`, 
         variant: "destructive" 
       });
-      // No need to manually restore if loadProducts is called, as it fetches fresh data
     }
     
     setIsSubmitting(false);
@@ -506,8 +511,8 @@ export function ProductManagement() {
   
     const success = await clearAllProductsFromSheet();
     
-    await loadProducts(false); // Reload products from sheet
-    setPopularityVersion(v => v + 1); // Update popularity
+    await loadProducts(false); 
+    setPopularityVersion(v => v + 1); 
   
     if (success) {
       toast({ 
@@ -577,8 +582,8 @@ export function ProductManagement() {
     });
 
     if (success) {
-      await loadProducts(false); // Reload
-      setPopularityVersion(v => v + 1); // Update popularity
+      await loadProducts(false); 
+      setPopularityVersion(v => v + 1); 
       setEditingProductId(null);
       toast({ 
         title: "Товар обновлен", 
@@ -599,19 +604,25 @@ export function ProductManagement() {
   const handleSyncRawProducts = useCallback(async () => {
     if (isLoading || isSubmitting) return;
     
-    setIsSubmitting(true); // Use isSubmitting here
+    setIsSubmitting(true); 
     const result = await syncRawProductsToSheet();
     setIsSubmitting(false);
 
-    toast({
-      title: result.success ? "Синхронизация завершена" : "Ошибка синхронизации",
-      description: `${result.message} Добавлено: ${result.addedCount}, Пропущено: ${result.skippedCount}.`,
-      variant: result.success ? "default" : "destructive",
-    });
-
-    if (result.success && result.addedCount > 0) {
-      await loadProducts(false);
-      setPopularityVersion(v => v + 1);
+    if (result.success) { // Toast only on success from the service
+        toast({
+          title: "Синхронизация завершена",
+          description: `${result.message} Добавлено: ${result.addedCount}, Пропущено: ${result.skippedCount}.`,
+        });
+        if (result.addedCount > 0) {
+          await loadProducts(false);
+          setPopularityVersion(v => v + 1);
+        }
+    } else {
+         toast({ // Toast error from service
+          title: "Ошибка синхронизации",
+          description: result.message,
+          variant: "destructive",
+        });
     }
   }, [toast, loadProducts, isLoading, isSubmitting]);
 
@@ -619,7 +630,7 @@ export function ProductManagement() {
     if (isLoading || isSubmitting) return;
     
     await loadProducts(true);
-    setPopularityVersion(v => v + 1); // Refresh popularity too
+    setPopularityVersion(v => v + 1); 
     
     if (!errorLoading) {
       toast({ 
@@ -670,7 +681,7 @@ export function ProductManagement() {
       <Card className="shadow-md flex flex-col h-[70vh]">
         <CardHeader className="flex flex-row items-center justify-between pb-4">
           <CardTitle className="text-lg md:text-xl">
-            Существующие товары ({isLoading && products.length === 0 ? '...' : products.length})
+            Существующие товары ({(isLoading || isPopularityLoading) && products.length === 0 ? '...' : products.length})
           </CardTitle>
           <div className="flex gap-2">
           {products.length === 0 && (
@@ -682,7 +693,7 @@ export function ProductManagement() {
                       size="icon" 
                       onClick={handleSyncRawProducts} 
                       className="h-8 w-8" 
-                      disabled={isLoading || isSubmitting}
+                      disabled={isLoading || isSubmitting || isPopularityLoading}
                     >
                       <FilePlus2 className="h-4 w-4" />
                       <span className="sr-only">Загрузить пример товаров</span>
@@ -704,7 +715,7 @@ export function ProductManagement() {
                         variant="destructive" 
                         size="icon" 
                         className="h-8 w-8" 
-                        disabled={products.length === 0 || isLoading || isSubmitting}
+                        disabled={products.length === 0 || isLoading || isSubmitting || isPopularityLoading}
                       >
                         <Trash className="h-4 w-4" />
                         <span className="sr-only">Удалить все товары</span>
@@ -746,7 +757,7 @@ export function ProductManagement() {
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-8 pr-8 h-9"
-                disabled={isLoading || isSubmitting}
+                disabled={isLoading || isSubmitting || isPopularityLoading}
               />
               {searchTerm && (
                 <Button 
@@ -754,7 +765,7 @@ export function ProductManagement() {
                   size="icon" 
                   className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground hover:text-foreground" 
                   onClick={() => setSearchTerm("")} 
-                  disabled={isLoading || isSubmitting}
+                  disabled={isLoading || isSubmitting || isPopularityLoading}
                 >
                   <X className="h-4 w-4" /> 
                   <span className="sr-only">Очистить поиск</span>
@@ -768,7 +779,7 @@ export function ProductManagement() {
                   variant="outline" 
                   size="icon" 
                   className="h-9 w-9 flex-shrink-0" 
-                  disabled={isLoading || isSubmitting}
+                  disabled={isLoading || isSubmitting || isPopularityLoading}
                 >
                   <SlidersHorizontal className="h-4 w-4" /> 
                   <span className="sr-only">Сортировать</span>
@@ -822,8 +833,8 @@ export function ProductManagement() {
                     variant="ghost" 
                     size="icon" 
                     onClick={handleRefresh} 
-                    className={cn("h-8 w-8 text-muted-foreground", (isLoading || isSubmitting) && "animate-spin")} 
-                    disabled={isLoading || isSubmitting}
+                    className={cn("h-8 w-8 text-muted-foreground", (isLoading || isSubmitting || isPopularityLoading) && "animate-spin")} 
+                    disabled={isLoading || isSubmitting || isPopularityLoading}
                   >
                     <RefreshCw className="h-4 w-4" /> 
                     <span className="sr-only">Обновить список</span>
@@ -851,7 +862,7 @@ export function ProductManagement() {
                 onCancelEditing={cancelEditing}
                 onEditSubmit={onEditSubmit}
                 onRemoveProduct={initiateDeleteProduct}
-                isLoading={isLoading}
+                isLoading={isLoading || isPopularityLoading}
                 isEditingLoading={isSubmitting}
               />
             </ScrollArea>
@@ -888,4 +899,3 @@ export function ProductManagement() {
     </div>
   );
 }
-
