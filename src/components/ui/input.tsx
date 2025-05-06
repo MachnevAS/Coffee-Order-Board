@@ -14,7 +14,6 @@ const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
           className
         )}
         ref={ref}
-        // Ensure value is never undefined, default to empty string
         value={value ?? ''}
         {...props}
       />

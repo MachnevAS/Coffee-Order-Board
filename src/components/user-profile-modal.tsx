@@ -118,14 +118,12 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
       middleName: data.middleName || undefined,
       lastName: data.lastName || undefined,
       position: data.position || undefined,
-      iconColor: data.iconColor || undefined, // Send empty string if cleared, API handles it
+      iconColor: data.iconColor || undefined, 
     };
 
     const changedProfileUpdates = Object.entries(profileUpdates).reduce((acc, [key, value]) => {
       if (user && (user[key as keyof User] !== value || (user[key as keyof User] === undefined && value === ''))) {
-          // Also consider undefined becoming an empty string as a change for iconColor
            if (key === 'iconColor' && user.iconColor === undefined && value === '') {
-             // Don't count this as a change if it was undefined and is now empty string
            } else {
             acc[key as keyof Partial<User>] = value;
            }
@@ -143,7 +141,6 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
                 description: 'Основные данные вашего профиля успешно сохранены.',
                 });
             } else {
-                // Error already set by updateUser in auth-context if it returns false
                 setError(error || 'Не удалось обновить основные данные профиля.');
             }
         } catch (err: any) {
@@ -179,9 +176,8 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
               confirmNewPassword: '',
             });
           } else {
-            // Error message should be set by verifyAndChangePassword or caught in the catch block
              const currentErrorMessage = form.formState.errors.currentPassword?.message || form.formState.errors.newPassword?.message || 'Не удалось изменить пароль. Проверьте текущий пароль.';
-             setError(currentErrorMessage); // Set general error as well
+             setError(currentErrorMessage); 
              if (!form.formState.errors.currentPassword && !form.formState.errors.newPassword) {
                 form.setError("currentPassword", { type: "manual", message: currentErrorMessage});
              }
@@ -189,8 +185,8 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
         } catch (err: any) {
           passwordChangeSuccess = false;
           const message = err.response?.data?.error || err.message || 'Произошла ошибка при смене пароля.';
-          setError(message); // Set general error
-          form.setError("currentPassword", {type: "manual", message}); // Set specific error on currentPassword
+          setError(message); 
+          form.setError("currentPassword", {type: "manual", message}); 
           console.error('Password change error:', err);
         }
       }
@@ -198,12 +194,11 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
 
     setIsSaving(false);
 
-    // Close modal logic
     const noProfileChangesAttempted = Object.keys(changedProfileUpdates).length === 0;
     const noPasswordChangeAttempted = !data.newPassword;
 
     if (noProfileChangesAttempted && noPasswordChangeAttempted) {
-        setIsOpen(false); // No changes made, just close
+        setIsOpen(false); 
         return;
     }
 
@@ -218,7 +213,6 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
     if (allAttemptedOperationsSuccessful) {
         setIsOpen(false);
     } else {
-        // Toast for overall failure if specific toasts weren't enough
         if (!profileUpdateSuccess && Object.keys(changedProfileUpdates).length > 0) {
              toast({ title: 'Ошибка сохранения профиля', description: error || 'Не удалось обновить данные.', variant: 'destructive' });
         }
@@ -243,101 +237,83 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
             Внесите изменения в ваш профиль. Нажмите "Сохранить", когда закончите.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-3 py-4"> {/* Reduced gap */}
+        <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4 py-4">
           
-          {/* Profile Fields */}
-          <div className="grid grid-cols-3 items-center gap-x-3 gap-y-1"> {/* Adjusted grid for better label fit */}
-            <Label htmlFor="login" className="text-right whitespace-nowrap">
-              Логин
-            </Label>
-            <Input id="login" {...form.register('login')} disabled={isLoading} className="col-span-2" />
-            {form.formState.errors.login && <p className="col-start-2 col-span-2 text-xs text-destructive">{form.formState.errors.login.message}</p>}
+          <div className="grid gap-1.5">
+            <Label htmlFor="login">Логин</Label>
+            <Input id="login" {...form.register('login')} disabled={isLoading} />
+            {form.formState.errors.login && <p className="text-xs text-destructive">{form.formState.errors.login.message}</p>}
           </div>
 
-          <div className="grid grid-cols-3 items-center gap-x-3 gap-y-1">
-            <Label htmlFor="lastName" className="text-right whitespace-nowrap">
-              Фамилия
-            </Label>
-            <Input id="lastName" {...form.register('lastName')} disabled={isLoading} className="col-span-2" />
-            {form.formState.errors.lastName && <p className="col-start-2 col-span-2 text-xs text-destructive">{form.formState.errors.lastName.message}</p>}
+          <div className="grid gap-1.5">
+            <Label htmlFor="lastName">Фамилия</Label>
+            <Input id="lastName" {...form.register('lastName')} disabled={isLoading} />
+            {form.formState.errors.lastName && <p className="text-xs text-destructive">{form.formState.errors.lastName.message}</p>}
           </div>
 
-          <div className="grid grid-cols-3 items-center gap-x-3 gap-y-1">
-            <Label htmlFor="firstName" className="text-right whitespace-nowrap">
-              Имя
-            </Label>
-            <Input id="firstName" {...form.register('firstName')} disabled={isLoading} className="col-span-2" />
-            {form.formState.errors.firstName && <p className="col-start-2 col-span-2 text-xs text-destructive">{form.formState.errors.firstName.message}</p>}
+          <div className="grid gap-1.5">
+            <Label htmlFor="firstName">Имя</Label>
+            <Input id="firstName" {...form.register('firstName')} disabled={isLoading} />
+            {form.formState.errors.firstName && <p className="text-xs text-destructive">{form.formState.errors.firstName.message}</p>}
           </div>
 
-          <div className="grid grid-cols-3 items-center gap-x-3 gap-y-1">
-            <Label htmlFor="middleName" className="text-right whitespace-nowrap">
-              Отчество
-            </Label>
-            <Input id="middleName" {...form.register('middleName')} disabled={isLoading} className="col-span-2" />
-            {form.formState.errors.middleName && <p className="col-start-2 col-span-2 text-xs text-destructive">{form.formState.errors.middleName.message}</p>}
+          <div className="grid gap-1.5">
+            <Label htmlFor="middleName">Отчество</Label>
+            <Input id="middleName" {...form.register('middleName')} disabled={isLoading} />
+            {form.formState.errors.middleName && <p className="text-xs text-destructive">{form.formState.errors.middleName.message}</p>}
           </div>
 
-          <div className="grid grid-cols-3 items-center gap-x-3 gap-y-1">
-            <Label htmlFor="position" className="text-right whitespace-nowrap">
-              Должность
-            </Label>
-            <Input id="position" {...form.register('position')} disabled={isLoading} className="col-span-2" />
-            {form.formState.errors.position && <p className="col-start-2 col-span-2 text-xs text-destructive">{form.formState.errors.position.message}</p>}
+          <div className="grid gap-1.5">
+            <Label htmlFor="position">Должность</Label>
+            <Input id="position" {...form.register('position')} disabled={isLoading} />
+            {form.formState.errors.position && <p className="text-xs text-destructive">{form.formState.errors.position.message}</p>}
           </div>
           
-          <div className="grid grid-cols-3 items-center gap-x-3 gap-y-1">
-            <Label htmlFor="iconColor" className="text-right flex items-center justify-end whitespace-nowrap">
-              <Palette className="h-4 w-4 mr-1 inline-block" /> Цвет
+          <div className="grid gap-1.5">
+            <Label htmlFor="iconColor" className="flex items-center">
+              <Palette className="h-4 w-4 mr-1 inline-block" /> Цвет иконки
             </Label>
             <Input 
               id="iconColor" 
+              type="color" // Use color input type
               {...form.register('iconColor')} 
               disabled={isLoading} 
-              className="col-span-2" 
+              className="h-10 w-14 p-1" // Adjust size for color picker
               placeholder="#RRGGBB" 
             />
-            {form.formState.errors.iconColor && <p className="col-start-2 col-span-2 text-xs text-destructive">{form.formState.errors.iconColor.message}</p>}
+            {form.formState.errors.iconColor && <p className="text-xs text-destructive">{form.formState.errors.iconColor.message}</p>}
           </div>
 
-          <Separator className="my-3" /> {/* Increased margin */}
-          <p className="text-sm text-muted-foreground col-span-3">Изменить пароль (оставьте пустыми, если не хотите менять)</p>
+          <Separator className="my-4" /> 
+          <p className="text-sm text-muted-foreground">Изменить пароль (оставьте пустыми, если не хотите менять)</p>
           
-          {/* Password Fields */}
-          <div className="grid grid-cols-3 items-center gap-x-3 gap-y-1">
-            <Label htmlFor="currentPassword" className="text-right whitespace-nowrap">
-              Текущий
-            </Label>
-            <Input id="currentPassword" type="password" {...form.register('currentPassword')} disabled={isLoading} className="col-span-2" autoComplete="current-password" />
-            {form.formState.errors.currentPassword && <p className="col-start-2 col-span-2 text-xs text-destructive">{form.formState.errors.currentPassword.message}</p>}
+          <div className="grid gap-1.5">
+            <Label htmlFor="currentPassword">Текущий пароль</Label>
+            <Input id="currentPassword" type="password" {...form.register('currentPassword')} disabled={isLoading} autoComplete="current-password" />
+            {form.formState.errors.currentPassword && <p className="text-xs text-destructive">{form.formState.errors.currentPassword.message}</p>}
           </div>
 
-          <div className="grid grid-cols-3 items-center gap-x-3 gap-y-1">
-            <Label htmlFor="newPassword" className="text-right whitespace-nowrap">
-              Новый
-            </Label>
-            <Input id="newPassword" type="password" {...form.register('newPassword')} disabled={isLoading} className="col-span-2" autoComplete="new-password"/>
-            {form.formState.errors.newPassword && <p className="col-start-2 col-span-2 text-xs text-destructive">{form.formState.errors.newPassword.message}</p>}
+          <div className="grid gap-1.5">
+            <Label htmlFor="newPassword">Новый пароль</Label>
+            <Input id="newPassword" type="password" {...form.register('newPassword')} disabled={isLoading} autoComplete="new-password"/>
+            {form.formState.errors.newPassword && <p className="text-xs text-destructive">{form.formState.errors.newPassword.message}</p>}
           </div>
 
-          <div className="grid grid-cols-3 items-center gap-x-3 gap-y-1">
-            <Label htmlFor="confirmNewPassword" className="text-right whitespace-nowrap">
-              Подтвердите
-            </Label>
-            <Input id="confirmNewPassword" type="password" {...form.register('confirmNewPassword')} disabled={isLoading} className="col-span-2" autoComplete="new-password"/>
-             {form.formState.errors.confirmNewPassword && <p className="col-start-2 col-span-2 text-xs text-destructive">{form.formState.errors.confirmNewPassword.message}</p>}
+          <div className="grid gap-1.5">
+            <Label htmlFor="confirmNewPassword">Подтвердите новый пароль</Label>
+            <Input id="confirmNewPassword" type="password" {...form.register('confirmNewPassword')} disabled={isLoading} autoComplete="new-password"/>
+             {form.formState.errors.confirmNewPassword && <p className="text-xs text-destructive">{form.formState.errors.confirmNewPassword.message}</p>}
           </div>
           
-          {/* General Error Alert */}
           {error && !form.formState.errors.login && !form.formState.errors.currentPassword && !form.formState.errors.newPassword && !form.formState.errors.confirmNewPassword && (
-            <Alert variant="destructive" className="col-span-3">
+            <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
               <AlertTitle>Ошибка</AlertTitle>
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
 
-          <DialogFooter className="pt-3"> {/* Added padding top */}
+          <DialogFooter className="pt-4"> 
             <DialogClose asChild>
               <Button type="button" variant="outline" disabled={isLoading}>
                 Отмена
