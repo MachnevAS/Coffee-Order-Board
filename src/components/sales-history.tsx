@@ -49,6 +49,12 @@ const getSheetUrlFragment = (sheetNameOrGid: string | undefined) => {
   if (/^\d+$/.test(sheetNameOrGid)) {
     return `gid=${sheetNameOrGid}`;
   }
+  // For sheet names, we need to find its GID.
+  // This part is tricky without making an API call just for the URL.
+  // For simplicity, if it's not a number, we'll assume it's a name that the user can find.
+  // A more robust solution would involve `getSheetGid` if the exact GID is needed for the URL.
+  // However, Google Sheets can usually find a sheet by name if it's part of the URL like /edit#gid=SHEET_NAME
+  // For now, let's just use the name directly.
   return `gid=${encodeURIComponent(sheetNameOrGid)}`; 
 };
 
@@ -87,10 +93,12 @@ SortIcon.displayName = 'SortIcon';
 // Helper to parse timestamp for sorting
 const parseTimestampForSort = (timestamp: string): Date | null => {
     if (typeof timestamp === 'string') {
+        // Check for 'dd.MM.yyyy HH:mm:ss' format first
         if (/^\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}:\d{2}$/.test(timestamp)) {
             const parts = timestamp.split(' ');
             const dateParts = parts[0].split('.');
             const timeParts = parts[1].split(':');
+            // Month is 0-indexed in JavaScript Date
             const date = new Date(
                 Number(dateParts[2]),
                 Number(dateParts[1]) - 1, 
@@ -101,6 +109,7 @@ const parseTimestampForSort = (timestamp: string): Date | null => {
             );
             return isValidDate(date) ? date : null;
         }
+        // Fallback to ISO parsing
         const isoDate = parseISO(timestamp);
         return isValidDate(isoDate) ? isoDate : null;
     }
@@ -116,6 +125,7 @@ export function SalesHistory() {
   const [isClearHistoryDialogOpen, setIsClearHistoryDialogOpen] = useState(false);
   const [orderToDelete, setOrderToDelete] = useState<Order | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isProcessingAction, setIsProcessingAction] = useState(false); // For delete/clear actions
   const [errorLoading, setErrorLoading] = useState<string | null>(null);
 
 
@@ -172,9 +182,9 @@ export function SalesHistory() {
                 if (dateA && dateB) {
                     comparison = dateA.getTime() - dateB.getTime();
                 } else if (dateA) {
-                    comparison = -1; 
+                    comparison = -1; // Treat rows with unparseable dates as older if one is parseable
                 } else if (dateB) {
-                    comparison = 1;  
+                    comparison = 1;  // Treat rows with unparseable dates as older if one is parseable
                 }
             }
             break;
@@ -196,15 +206,15 @@ export function SalesHistory() {
 
 
   const initiateDeleteOrder = useCallback((order: Order) => {
-    if (isLoading) return;
+    if (isLoading || isProcessingAction) return;
     setOrderToDelete(order);
-  }, [isLoading]);
+  }, [isLoading, isProcessingAction]);
 
   const confirmDeleteOrder = useCallback(async () => {
-    if (!orderToDelete || isLoading) return;
+    if (!orderToDelete || isLoading || isProcessingAction) return;
     
     const orderIdToDelete = orderToDelete.id;
-    setIsLoading(true); 
+    setIsProcessingAction(true);
     const success = await deleteOrderFromSheet(orderIdToDelete);
     setOrderToDelete(null);
     
@@ -222,22 +232,22 @@ export function SalesHistory() {
         variant: "destructive" 
       });
     }
-    setIsLoading(false);
-  }, [orderToDelete, toast, loadOrders, isLoading]);
+    setIsProcessingAction(false);
+  }, [orderToDelete, toast, loadOrders, isLoading, isProcessingAction]);
 
   const cancelDeleteOrder = useCallback(() => {
     setOrderToDelete(null);
   }, []);
 
   const initiateClearAllOrders = useCallback(() => {
-     if (isLoading) return;
+     if (isLoading || isProcessingAction) return;
     setIsClearHistoryDialogOpen(true);
-  }, [isLoading]);
+  }, [isLoading, isProcessingAction]);
 
   const confirmClearAllOrders = useCallback(async () => {
-    if (isLoading) return;
+    if (isLoading || isProcessingAction) return;
     setIsClearHistoryDialogOpen(false);
-    setIsLoading(true);
+    setIsProcessingAction(true);
     const success = await clearAllOrdersFromSheet();
     
     if (success) {
@@ -254,8 +264,8 @@ export function SalesHistory() {
         variant: "destructive" 
       });
     }
-    setIsLoading(false);
-  }, [toast, loadOrders, isLoading]);
+    setIsProcessingAction(false);
+  }, [toast, loadOrders, isLoading, isProcessingAction]);
 
   const cancelClearAllOrders = useCallback(() => {
     setIsClearHistoryDialogOpen(false);
@@ -265,19 +275,19 @@ export function SalesHistory() {
     setSortConfig(prevConfig => {
       if (prevConfig?.key === key) {
         if (prevConfig.direction === 'asc') return { key, direction: 'desc' };
-        if (prevConfig.direction === 'desc') return DEFAULT_SORT; 
+        if (prevConfig.direction === 'desc') return DEFAULT_SORT; // Reset to default if clicked again
       }
       return { key, direction: 'asc' };
     });
   }, []);
 
   const handleRefresh = useCallback(async () => {
-      if (isLoading) return;
+      if (isLoading || isProcessingAction) return;
       await loadOrders(true);
       if (!errorLoading) {
          toast({ title: "История обновлена", description: "Данные загружены из Google Sheets." });
       }
-  }, [loadOrders, toast, isLoading, errorLoading]);
+  }, [loadOrders, toast, isLoading, errorLoading, isProcessingAction]);
 
 
   if (!isClient) {
@@ -290,19 +300,22 @@ export function SalesHistory() {
   }
   
   const formatDisplayDate = (timestamp: string) => {
+    // First, try to parse as 'dd.MM.yyyy HH:mm:ss' (common in Sheets)
     if (typeof timestamp === 'string' && /^\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}:\d{2}$/.test(timestamp)) {
+      // If it's already in the desired display format, return as is.
       return timestamp;
     }
+    // Then, try to parse as ISO string (used internally)
     try {
       const date = parseISO(timestamp);
       if (isValidDate(date)) {
         return format(date, 'dd.MM.yyyy HH:mm:ss', { locale: ru });
       }
     } catch (e) {
-      // Fallback
+      // If ISO parsing fails, or if it's not a string, log and return original
     }
-    console.warn("Failed to format date for display, returning original:", timestamp);
-    return timestamp;
+    console.warn("SalesHistory: Failed to format date for display, returning original:", timestamp);
+    return timestamp; // Fallback to original if parsing fails
   };
 
 
@@ -315,7 +328,7 @@ export function SalesHistory() {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3 md:gap-4">
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline" className="w-full sm:w-auto justify-start text-left font-normal text-xs md:text-sm h-9 md:h-10 px-3" disabled={isLoading}>
+              <Button variant="outline" className="w-full sm:w-auto justify-start text-left font-normal text-xs md:text-sm h-9 md:h-10 px-3" disabled={isLoading || isProcessingAction}>
                 <CalendarIcon className="mr-1.5 h-3.5 w-3.5" />
                 {dateRange?.from ? (
                   dateRange.to ? 
@@ -343,7 +356,7 @@ export function SalesHistory() {
              <TooltipProvider>
                 <Tooltip>
                     <TooltipTrigger asChild>
-                        <Button variant="ghost" size="icon" onClick={handleRefresh} className={cn("h-9 w-9 md:h-10 md:w-10 text-muted-foreground", isLoading && "animate-spin")} disabled={isLoading}>
+                        <Button variant="ghost" size="icon" onClick={handleRefresh} className={cn("h-9 w-9 md:h-10 md:w-10 text-muted-foreground", (isLoading || isProcessingAction) && "animate-spin")} disabled={isLoading || isProcessingAction}>
                             <RefreshCw className="h-4 w-4 md:h-5 md:w-5" />
                             <span className="sr-only">Обновить историю</span>
                         </Button>
@@ -355,7 +368,7 @@ export function SalesHistory() {
               asChild
               size="sm" 
               className="h-9 md:h-10 text-xs md:text-sm px-3"
-              disabled={isLoading || !GOOGLE_SHEET_ID || !GOOGLE_HISTORY_SHEET_NAME}
+              disabled={isLoading || isProcessingAction || !GOOGLE_SHEET_ID || !GOOGLE_HISTORY_SHEET_NAME}
             >
               <a href={googleSheetHistoryUrl} target="_blank" rel="noopener noreferrer">
                 <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> Открыть таблицу
@@ -368,7 +381,7 @@ export function SalesHistory() {
                   variant="destructive" 
                   size="sm" 
                   className="h-9 md:h-10 text-xs md:text-sm px-3" 
-                  disabled={orders.length === 0 || isLoading}
+                  disabled={orders.length === 0 || isLoading || isProcessingAction}
                 >
                   <Trash className="mr-1.5 h-3.5 w-3.5" /> Удалить историю
                 </Button>
@@ -377,19 +390,19 @@ export function SalesHistory() {
                 <AlertDialogHeader>
                   <AlertDialogTitle>Вы уверены?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    Это действие необратимо. Вся история продаж ({orders.length} записей) будет удалена навсегда из Google Sheets.
+                    Это действие необратимо. Вся история продаж ({orders.length} записей) будет удалена навсегда из Google Sheets (кроме заголовка).
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel onClick={cancelClearAllOrders} className="text-xs px-3 h-9" disabled={isLoading}>
+                  <AlertDialogCancel onClick={cancelClearAllOrders} className="text-xs px-3 h-9" disabled={isProcessingAction}>
                     Отмена
                   </AlertDialogCancel>
                   <AlertDialogAction 
                     onClick={confirmClearAllOrders} 
                     className={buttonVariants({ variant: "destructive", size:"sm", className:"text-xs px-3 h-9" })}
-                    disabled={isLoading}
+                    disabled={isProcessingAction}
                   >
-                    {isLoading ? "Удаление..." : "Очистить историю"}
+                    {isProcessingAction ? "Удаление..." : "Очистить историю"}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
@@ -444,7 +457,7 @@ export function SalesHistory() {
               </TableRow>
             </TableHeader>
             <TableBody>
-             {isLoading && filteredAndSortedOrders.length === 0 ? (
+             {(isLoading && !isProcessingAction) && filteredAndSortedOrders.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center text-muted-foreground py-6 md:py-8 text-sm">
                     Загрузка истории...
@@ -507,7 +520,7 @@ export function SalesHistory() {
                             size="icon" 
                             className="h-7 w-7 md:h-8 md:w-8 text-destructive hover:text-destructive hover:bg-destructive/10" 
                             onClick={() => initiateDeleteOrder(order)}
-                            disabled={isLoading}
+                            disabled={isLoading || isProcessingAction}
                           >
                             <Trash2 className="h-3.5 w-3.5 md:h-4 md:w-4" />
                             <span className="sr-only">Удалить заказ {order.id}</span>
@@ -522,15 +535,15 @@ export function SalesHistory() {
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
-                              <AlertDialogCancel onClick={cancelDeleteOrder} className="text-xs px-3 h-9" disabled={isLoading}>
+                              <AlertDialogCancel onClick={cancelDeleteOrder} className="text-xs px-3 h-9" disabled={isProcessingAction}>
                                 Отмена
                               </AlertDialogCancel>
                               <AlertDialogAction 
                                 onClick={confirmDeleteOrder} 
                                 className={buttonVariants({ variant: "destructive", size:"sm", className:"text-xs px-3 h-9" })}
-                                disabled={isLoading}
+                                disabled={isProcessingAction}
                               >
-                                {isLoading ? "Удаление..." : "Удалить"}
+                                {isProcessingAction ? "Удаление..." : "Удалить"}
                               </AlertDialogAction>
                             </AlertDialogFooter>
                           </AlertDialogContent>
@@ -548,3 +561,5 @@ export function SalesHistory() {
     </Card>
   );
 }
+
+    

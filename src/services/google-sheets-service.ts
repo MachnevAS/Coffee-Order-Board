@@ -27,8 +27,8 @@ const {
 const PRIVATE_KEY = GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n');
 const SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
 
-let sheets = null;
-let authError = null;
+let sheets: any = null; // Use 'any' or specific Sheets type
+let authError: string | null = null;
 
 // --- Constants and Helpers ---
 // Column mapping for products sheet
@@ -53,7 +53,7 @@ const HISTORY_FULL_RANGE_FOR_APPEND = `${HISTORY_SHEET_NAME_ONLY}!A:F`;
 
 
 // Cache for sheet GIDs to avoid repeated lookups
-const sheetGidCache = {};
+const sheetGidCache: Record<string, number | null> = {};
 
 // Initialize Google Sheets client
 const initializeSheetsClient = () => {
@@ -77,7 +77,7 @@ const initializeSheetsClient = () => {
     } else {
       throw new Error("Missing Google Sheets API credentials.");
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error("!!! CRITICAL: Failed to initialize Google Sheets client:", error.message);
     authError = `Failed to initialize Google Sheets client: ${error.message}`;
     sheets = null;
@@ -100,7 +100,7 @@ const getSheetsClient = () => {
 };
 
 // Helper function to generate a local ID
-const generateLocalId = (name, volume, rowIndex) => {
+const generateLocalId = (name: string, volume: string | undefined, rowIndex: number) => {
   const hashString = `${name}-${volume || 'none'}-${rowIndex}`;
   let hash = 0;
   for (let i = 0; i < hashString.length; i++) {
@@ -112,7 +112,7 @@ const generateLocalId = (name, volume, rowIndex) => {
 };
 
 // Helper to convert sheet row to Product object
-const rowToProduct = (row, arrayIndex) => {
+const rowToProduct = (row: any[], arrayIndex: number): Product | null => {
   if (!row || row.length === 0 || !row[PRODUCT_COLUMN_MAP.name]) {
     return null;
   }
@@ -135,7 +135,7 @@ const rowToProduct = (row, arrayIndex) => {
 };
 
 // Helper to convert sheet row to User object
-const rowToUser = (row) => {
+const rowToUser = (row: any[]): User | null => {
   if (!row || row.length <= USER_COLUMN_MAP.passwordHash || !row[USER_COLUMN_MAP.login]) {
     if (row?.every(cell => cell === null || cell === '')) return null;
     console.warn(`[GSHEET User] Skipping row due to missing data:`, row);
@@ -159,7 +159,7 @@ const rowToUser = (row) => {
 };
 
 // Helper to convert sheet row to Order object
-const rowToOrder = (row): Order | null => {
+const rowToOrder = (row: any[]): Order | null => {
   if (!row || row.length === 0 || !row[HISTORY_COLUMN_MAP.orderId] || !row[HISTORY_COLUMN_MAP.timestamp]) {
     return null;
   }
@@ -168,7 +168,7 @@ const rowToOrder = (row): Order | null => {
   try {
     const itemsString = row[HISTORY_COLUMN_MAP.items] ?? '';
     if (itemsString.length > 0) {
-        items = itemsString.split(', ').map(itemStr => {
+        items = itemsString.split(', ').map((itemStr: string) => {
             const itemParts = itemStr.trim().match(/^(.+?)(?:\s+\((.+?)\))?\s+x(\d+)$/);
             if (itemParts) {
                 return {
@@ -231,7 +231,7 @@ const rowToOrder = (row): Order | null => {
 
 
 // Helper to convert Product object to sheet row
-const productToRow = (product) => {
+const productToRow = (product: Omit<Product, 'id'>): string[] => {
   const row = Array(Object.keys(PRODUCT_COLUMN_MAP).length).fill('');
   row[PRODUCT_COLUMN_MAP.name] = product.name;
   row[PRODUCT_COLUMN_MAP.volume] = product.volume ?? '';
@@ -270,7 +270,7 @@ const orderToRow = (order: Order): string[] => {
 
 
 // Helper function to get the sheetId (gid) for a given sheet name
-const getSheetGid = async (sheetName) => {
+const getSheetGid = async (sheetName: string): Promise<number | null> => {
   if (sheetGidCache[sheetName]) {
     return sheetGidCache[sheetName];
   }
@@ -285,7 +285,7 @@ const getSheetGid = async (sheetName) => {
     });
     
     const sheetProperties = response.data.sheets?.find(
-      (sheet) => sheet.properties?.title === sheetName
+      (sheet: any) => sheet.properties?.title === sheetName
     )?.properties;
 
     if (sheetProperties?.sheetId !== undefined) {
@@ -295,14 +295,14 @@ const getSheetGid = async (sheetName) => {
     
     console.error(`[GSHEET] Could not find sheetId for sheet "${sheetName}"`);
     return null;
-  } catch (error) {
+  } catch (error: any) {
     console.error(`[GSHEET] Error fetching sheetId for "${sheetName}":`, error?.message || error);
     return null;
   }
 };
 
 // Helper to find row index by column value
-const findRowIndexByColumnValue = async (sheetNameOnly, columnIndex, valueToFind, startRow) => {
+const findRowIndexByColumnValue = async (sheetNameOnly: string, columnIndex: number, valueToFind: string, startRow: number): Promise<number | null> => {
   const currentSheets = getSheetsClient();
   if (!currentSheets) return null;
 
@@ -324,7 +324,7 @@ const findRowIndexByColumnValue = async (sheetNameOnly, columnIndex, valueToFind
       return null;
     }
 
-    const indexInData = rows.findIndex(row => row[0] === valueToFind);
+    const indexInData = rows.findIndex((row: any[]) => row[0] === valueToFind);
     if (indexInData !== -1) {
       const sheetRowIndex = indexInData + startRow;
       console.log(`${logPrefix} Found match at row: ${sheetRowIndex}`);
@@ -333,14 +333,14 @@ const findRowIndexByColumnValue = async (sheetNameOnly, columnIndex, valueToFind
     
     console.log(`${logPrefix} Match not found for "${valueToFind}".`);
     return null;
-  } catch (error) {
+  } catch (error: any) {
     console.error(`${logPrefix} Error finding row for "${valueToFind}":`, error?.message || error);
     return null;
   }
 };
 
 // Helper to find product row by name and volume
-const findProductRowIndexByNameAndVolume = async (name, volume) => {
+const findProductRowIndexByNameAndVolume = async (name: string, volume?: string): Promise<number | null> => {
   const currentSheets = getSheetsClient();
   if (!currentSheets) return null;
   const searchVolume = volume ?? '';
@@ -358,7 +358,7 @@ const findProductRowIndexByNameAndVolume = async (name, volume) => {
       return null;
     }
 
-    const indexInData = rows.findIndex(row =>
+    const indexInData = rows.findIndex((row: any[]) =>
       row[PRODUCT_COLUMN_MAP.name] === name &&
       (row[PRODUCT_COLUMN_MAP.volume] ?? '') === searchVolume
     );
@@ -371,7 +371,7 @@ const findProductRowIndexByNameAndVolume = async (name, volume) => {
     
     console.log(`[GSHEET Product] Match not found.`);
     return null;
-  } catch (error) {
+  } catch (error: any) {
     console.error(`[GSHEET Product] Error finding row:`, error?.message || error);
     return null;
   }
@@ -401,9 +401,9 @@ export const fetchProductsFromSheet = async (): Promise<Product[]> => {
 
     console.log(`[GSHEET Product] Fetched ${rows.length} rows.`);
     return rows
-      .map((row, index) => rowToProduct(row, index))
+      .map((row: any[], index: number) => rowToProduct(row, index))
       .filter(Boolean) as Product[];
-  } catch (error) {
+  } catch (error: any) {
     console.error('[GSHEET Product] Error fetching products:', error?.message || error);
     throw new Error('Failed to fetch products. Check permissions and config.');
   }
@@ -444,7 +444,7 @@ export const addProductToSheet = async (product: Omit<Product, 'id'>): Promise<b
     
     console.log(`[GSHEET Product] Successfully added product.`);
     return true;
-  } catch (error) {
+  } catch (error: any) {
     console.error(`[GSHEET Product] Error adding product:`, error?.message || error);
     return false;
   }
@@ -493,7 +493,7 @@ export const updateProductInSheet = async ({ originalName, originalVolume, newDa
     
     console.log(`[GSHEET Product] Successfully updated product.`);
     return true;
-  } catch (error) {
+  } catch (error: any) {
     console.error(`[GSHEET Product] Error updating product:`, error?.message || error);
     return false;
   }
@@ -546,7 +546,7 @@ export const deleteProductFromSheet = async ({ name, volume }: { name: string, v
     
     console.log(`[GSHEET Product] Successfully deleted product.`);
     return true;
-  } catch (error) {
+  } catch (error: any) {
     console.error(`[GSHEET Product] Error deleting product:`, error?.message || error);
     return false;
   }
@@ -616,7 +616,7 @@ export const syncRawProductsToSheet = async () => {
       addedCount: productsToAdd.length, 
       skippedCount 
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error('[GSHEET Product] Error syncing raw products:', error?.message || error);
     return { 
       success: false, 
@@ -647,27 +647,27 @@ export const getUserDataFromSheet = async (login: string): Promise<User | null> 
       return null;
     }
 
-    const userRow = rows.find(row => row[USER_COLUMN_MAP.login] === login);
+    const userRow = rows.find((row: any[]) => row[USER_COLUMN_MAP.login] === login);
     if (!userRow) {
       console.log(`[GSHEET User] User "${login}" not found.`);
       return null;
     }
 
     return rowToUser(userRow);
-  } catch (error) {
+  } catch (error: any) {
     console.error(`[GSHEET User] Error fetching user "${login}":`, error?.message || error);
     return null;
   }
 };
 
 // Verify password
-export const verifyPassword = async (inputPassword, storedHash) => {
+export const verifyPassword = async (inputPassword: string, storedHash: string) => {
   console.warn("[Security] Comparing passwords in plain text. IMPLEMENT HASHING!");
   return inputPassword === storedHash;
 };
 
 // Find user row by login
-const findUserRowIndexByLogin = async (login) => {
+const findUserRowIndexByLogin = async (login: string) => {
   return findRowIndexByColumnValue(
     USERS_SHEET_NAME_ONLY, 
     USER_COLUMN_MAP.login, 
@@ -743,7 +743,7 @@ export const updateUserInSheet = async (originalLogin: string, updates: Partial<
 
     console.log(`[GSHEET User] Successfully updated user "${originalLogin}". New login (if changed): "${updates.login || originalLogin}".`);
     return true;
-  } catch (error) {
+  } catch (error: any) {
     console.error(`[GSHEET User] Error updating user "${originalLogin}":`, error?.message || error);
     return false;
   }
@@ -774,7 +774,7 @@ export const fetchOrdersFromSheet = async (): Promise<Order[]> => {
 
     console.log(`[GSHEET History] Fetched ${rows.length} rows.`);
     return rows.map(rowToOrder).filter(Boolean) as Order[];
-  } catch (error) {
+  } catch (error: any) {
     console.error('[GSHEET History] Error fetching orders:', error?.message || error);
     throw new Error('Failed to fetch orders. Check permissions and config.');
   }
@@ -810,7 +810,7 @@ export const addOrderToSheet = async (order: Order): Promise<boolean> => {
     
     console.log(`[GSHEET History] Successfully added order "${order.id}".`);
     return true;
-  } catch (error) {
+  } catch (error: any) {
     console.error(`[GSHEET History] Error adding order "${order.id}":`, error?.message || error);
     return false;
   }
@@ -863,7 +863,7 @@ export const deleteOrderFromSheet = async (orderId: string): Promise<boolean> =>
     
     console.log(`[GSHEET History] Successfully deleted order "${orderId}".`);
     return true;
-  } catch (error) {
+  } catch (error: any) {
     console.error(`[GSHEET History] Error deleting order "${orderId}":`, error?.message || error);
     return false;
   }
@@ -888,13 +888,16 @@ export const clearAllOrdersFromSheet = async (): Promise<boolean> => {
       return false;
     }
     
+    // Get the total number of rows in the sheet to determine the range to clear.
+    // We cannot use clear method for a specific range as it might clear headers if not careful.
+    // Instead, we fetch the sheet's properties to get the total row count.
     const sheetMetadata = await currentSheets.spreadsheets.get({
         spreadsheetId: SHEET_ID,
-        ranges: [HISTORY_SHEET_NAME_ONLY],
+        ranges: [HISTORY_SHEET_NAME_ONLY], // Specify the sheet name to get its properties
         fields: 'sheets(properties(gridProperties(rowCount)))',
     });
 
-    const currentSheetInfo = sheetMetadata.data.sheets?.find(s => s.properties?.title === HISTORY_SHEET_NAME_ONLY);
+    const currentSheetInfo = sheetMetadata.data.sheets?.find((s: any) => s.properties?.title === HISTORY_SHEET_NAME_ONLY);
     const totalRows = currentSheetInfo?.properties?.gridProperties?.rowCount;
 
     if (!totalRows || totalRows <= HISTORY_HEADER_ROW_COUNT) {
@@ -903,6 +906,8 @@ export const clearAllOrdersFromSheet = async (): Promise<boolean> => {
     }
 
     // Delete all rows starting from HISTORY_DATA_START_ROW up to the last row
+    // The startIndex for deleteDimension is 0-based.
+    // The endIndex is exclusive.
     await currentSheets.spreadsheets.batchUpdate({
         spreadsheetId: SHEET_ID,
         requestBody: {
@@ -911,7 +916,7 @@ export const clearAllOrdersFromSheet = async (): Promise<boolean> => {
                     range: {
                         sheetId: sheetGid,
                         dimension: 'ROWS',
-                        startIndex: HISTORY_DATA_START_ROW - 1, // 0-indexed for batchUpdate
+                        startIndex: HISTORY_DATA_START_ROW - 1, // e.g. if header is 1 row, data starts at row 2, so startIndex is 1
                         endIndex: totalRows, // endIndex is exclusive, so this covers all rows to the end
                     },
                 },
@@ -921,8 +926,10 @@ export const clearAllOrdersFromSheet = async (): Promise<boolean> => {
     
     console.log(`[GSHEET History] Successfully cleared all orders from sheet "${HISTORY_SHEET_NAME_ONLY}".`);
     return true;
-  } catch (error) {
+  } catch (error: any) {
     console.error(`[GSHEET History] Error clearing all orders:`, error?.message || error);
     return false;
   }
 };
+
+    
