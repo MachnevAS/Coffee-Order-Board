@@ -1,7 +1,10 @@
+
 import { NextResponse } from 'next/server';
 import { getUserDataFromSheet, verifyPassword } from '@/services/google-sheets-service';
 import { session } from '@/lib/session';
 import type { User } from '@/types/user'; // Ensure User type is defined
+
+const ENCRYPTION_TAG = "encryption";
 
 export async function POST(request: Request) {
   try {
@@ -23,8 +26,7 @@ export async function POST(request: Request) {
 
     // Verify password using the function (even if it's plain text for now)
     const passwordMatches = await verifyPassword(password, userData.passwordHash);
-    // const passwordMatches = password === userData.passwordHash; // Simple comparison for now (kept for reference)
-
+    
     if (!passwordMatches) {
       console.log(`[API Login] Invalid password for login: ${login}`);
       return NextResponse.json({ error: 'Неверный логин или пароль' }, { status: 401 });
@@ -46,11 +48,14 @@ export async function POST(request: Request) {
     currentSession.user = userSessionData; // Set the user data
     await currentSession.save(); // Save the session
 
-    console.log(`[API Login] Successful login for user: ${login}, session saved.`);
-    return NextResponse.json({ user: userSessionData });
+    const showPasswordChangeWarning = !userData.passwordHash.startsWith(ENCRYPTION_TAG);
+
+    console.log(`[API Login] Successful login for user: ${login}, session saved. Password warning: ${showPasswordChangeWarning}`);
+    return NextResponse.json({ user: userSessionData, showPasswordChangeWarning });
 
   } catch (error: any) {
     console.error('[API Login] Error during login:', error);
     return NextResponse.json({ error: 'Внутренняя ошибка сервера' }, { status: 500 });
   }
 }
+

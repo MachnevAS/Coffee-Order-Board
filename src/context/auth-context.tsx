@@ -2,8 +2,9 @@
 'use client';
 
 import React, { createContext, useState, useContext, useEffect, useCallback, ReactNode } from 'react';
-import { useRouter, usePathname } from 'next/navigation'; // Import usePathname
-import type { User } from '@/types/user'; // Ensure User type is defined
+import { useRouter, usePathname } from 'next/navigation';
+import type { User } from '@/types/user';
+import { useToast } from '@/hooks/use-toast'; // Import useToast
 
 interface AuthContextType {
   user: User | null;
@@ -18,17 +19,17 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true); // Start loading initially
+  const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
-  const pathname = usePathname(); // Get current pathname
+  const pathname = usePathname();
+  const { toast } = useToast(); // Initialize toast
 
   const fetchUser = useCallback(async (isInitialLoad = false) => {
-    // Only set loading true on initial load or explicit refresh actions
     if (isInitialLoad) setIsLoading(true);
     console.log("[AuthContext] Fetching user...");
     try {
       const res = await fetch('/api/auth/user');
-      const data = await res.json(); // Always parse JSON
+      const data = await res.json();
 
       if (res.ok && data.user) {
         setUser(data.user);
@@ -39,20 +40,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     } catch (error) {
       console.error('[AuthContext] Error fetching user:', error);
-      setUser(null); 
+      setUser(null);
     } finally {
       if (isInitialLoad) setIsLoading(false);
-      console.log("[AuthContext] Finished fetching user. Loading:", isLoading); 
+      console.log("[AuthContext] Finished fetching user. Loading:", isLoading);
     }
-  }, [router, pathname, isLoading]); 
+  }, [isLoading]); // Removed router and pathname as they are not direct dependencies for fetchUser
 
   useEffect(() => {
-    fetchUser(true); 
-    // eslint-disable-next-line react-hooks-exhaustive-deps
-  }, []); 
+    fetchUser(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const login = useCallback(async (loginInput: string, passwordInput: string): Promise<boolean> => {
-    setIsLoading(true); 
+    setIsLoading(true);
     console.log(`[AuthContext] Attempting login for: ${loginInput}`);
     try {
       const res = await fetch('/api/auth/login', {
@@ -61,11 +62,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         body: JSON.stringify({ login: loginInput, password: passwordInput }),
       });
 
-      const data = await res.json(); 
+      const data = await res.json();
 
       if (res.ok && data.user) {
         setUser(data.user);
         console.log("[AuthContext] Login successful:", data.user.login);
+        if (data.showPasswordChangeWarning) {
+          toast({
+            title: 'Рекомендация по безопасности',
+            description: 'Ваш пароль хранится в небезопасном формате. Пожалуйста, смените его в настройках профиля.',
+            variant: 'destructive', // Or a custom warning variant
+            duration: 10000, // Show for longer
+          });
+        }
         return true;
       } else {
         console.log("[AuthContext] Login failed:", res.status, data.error || 'No error message from API');
@@ -77,13 +86,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setUser(null);
       return false;
     } finally {
-      setIsLoading(false); 
+      setIsLoading(false);
       console.log("[AuthContext] Login attempt finished.");
     }
-  }, []); 
+  }, [toast]); // Added toast as a dependency
 
   const logout = useCallback(async () => {
-    setIsLoading(true); 
+    setIsLoading(true);
     console.log("[AuthContext] Initiating logout...");
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
@@ -91,14 +100,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } catch (error) {
       console.error('[AuthContext] Logout API error:', error);
     } finally {
-      setUser(null); 
+      setUser(null);
       console.log("[AuthContext] Client-side user state cleared.");
-      router.push('/login'); // Redirect to login page after logout
-      router.refresh(); // Force refresh
-      setIsLoading(false); 
+      router.push('/login');
+      router.refresh();
+      setIsLoading(false);
       console.log("[AuthContext] Logout process complete.");
     }
-  }, [router]); 
+  }, [router]);
 
  const updateUser = useCallback(async (updates: Partial<User>): Promise<boolean> => {
     if (!user) {
@@ -116,7 +125,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const data = await res.json(); 
 
         if (res.ok && data.user) {
-            setUser(data.user); // Update local user state
+            setUser(data.user); 
             console.log("[AuthContext] User update successful:", data.user.login);
             return true;
         } else {
@@ -125,7 +134,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
     } catch (error: any) {
         console.error('[AuthContext] Update user API error:', error);
-        throw error; // Re-throw to be caught by UserProfileModal
+        throw error; 
     } finally {
         setIsLoading(false);
         console.log("[AuthContext] User update attempt finished.");
@@ -140,7 +149,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsLoading(true);
     console.log(`[AuthContext] Attempting to change password for user: ${user.login}`);
     try {
-      const res = await fetch('/api/auth/change-password', { // New API endpoint
+      const res = await fetch('/api/auth/change-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ currentPassword, newPassword }),
@@ -149,16 +158,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (res.ok) {
         console.log("[AuthContext] Password change successful for:", user.login);
-        // Optionally re-fetch user if password change affects other user data or session
-        // await fetchUser(); 
         return true;
       } else {
         console.error("[AuthContext] Password change failed:", res.status, data.error || 'No error message from API');
-        throw new Error(data.error || 'Не удалось изменить пароль.'); // Throw error to be caught by ProfileModal
+        throw new Error(data.error || 'Не удалось изменить пароль.');
       }
     } catch (error: any) {
       console.error('[AuthContext] Change password API error:', error);
-      throw error; // Re-throw to be caught by ProfileModal
+      throw error;
     } finally {
       setIsLoading(false);
       console.log("[AuthContext] Password change attempt finished.");

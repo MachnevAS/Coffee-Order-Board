@@ -1,3 +1,4 @@
+
 'use server';
 /**
  * @fileoverview Service for interacting with the Google Sheets API using Service Account authentication.
@@ -54,6 +55,11 @@ const HISTORY_FULL_RANGE_FOR_APPEND = `${HISTORY_SHEET_NAME_ONLY}!A:F`;
 
 // Cache for sheet GIDs to avoid repeated lookups
 const sheetGidCache: Record<string, number | null> = {};
+
+// Encryption constants
+const ENCRYPTION_TAG = "encryption";
+// THIS IS A VERY WEAK KEY AND METHOD, FOR DEMONSTRATION ONLY. DO NOT USE IN PRODUCTION.
+const ENCRYPTION_KEY = process.env.IRON_SESSION_PASSWORD || "default_weak_encryption_key_32_chars"; 
 
 // Initialize Google Sheets client
 const initializeSheetsClient = () => {
@@ -629,6 +635,22 @@ export const syncRawProductsToSheet = async () => {
 
 // --- User Authentication Functions ---
 
+// Simple XOR "encryption" - NOT FOR PRODUCTION USE
+const xorEncryptDecrypt = (text: string, key: string): string => {
+  let result = "";
+  for (let i = 0; i < text.length; i++) {
+    result += String.fromCharCode(text.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+  }
+  return result;
+};
+
+// Hash password (simple XOR encryption for demonstration)
+export const hashPassword = async (password: string): Promise<string> => {
+  console.warn("[Security] Using simple XOR for password 'encryption'. THIS IS NOT SECURE FOR PRODUCTION.");
+  const encrypted = xorEncryptDecrypt(password, ENCRYPTION_KEY);
+  return `${ENCRYPTION_TAG}${encrypted}`;
+};
+
 // Get user data from sheet
 export const getUserDataFromSheet = async (login: string): Promise<User | null> => {
   const currentSheets = getSheetsClient();
@@ -661,9 +683,16 @@ export const getUserDataFromSheet = async (login: string): Promise<User | null> 
 };
 
 // Verify password
-export const verifyPassword = async (inputPassword: string, storedHash: string) => {
-  console.warn("[Security] Comparing passwords in plain text. IMPLEMENT HASHING!");
-  return inputPassword === storedHash;
+export const verifyPassword = async (inputPassword: string, storedPasswordWithTag: string): Promise<boolean> => {
+  if (storedPasswordWithTag.startsWith(ENCRYPTION_TAG)) {
+    const encryptedPassword = storedPasswordWithTag.substring(ENCRYPTION_TAG.length);
+    const decryptedStoredPassword = xorEncryptDecrypt(encryptedPassword, ENCRYPTION_KEY);
+    console.log("[Security] Verifying 'encrypted' password.");
+    return inputPassword === decryptedStoredPassword;
+  } else {
+    console.warn("[Security] Comparing plain text password. User should update their password.");
+    return inputPassword === storedPasswordWithTag;
+  }
 };
 
 // Find user row by login
@@ -692,7 +721,7 @@ export const updateUserInSheet = async (originalLogin: string, updates: Partial<
   }
 
   try {
-    console.log(`[GSHEET User] Updating user: "${originalLogin}" with updates:`, updates);
+    console.log(`[GSHEET User] Updating user: "${originalLogin}" with updates:`, JSON.stringify(updates)); // Log stringified updates
     const rowIndex = await findUserRowIndexByLogin(originalLogin);
     if (rowIndex === null) {
       console.error(`[GSHEET User] User "${originalLogin}" not found for update.`);
@@ -717,7 +746,15 @@ export const updateUserInSheet = async (originalLogin: string, updates: Partial<
     }
     
     if (updates.login !== undefined) updatedRow[USER_COLUMN_MAP.login] = updates.login;
-    if (updates.passwordHash !== undefined) updatedRow[USER_COLUMN_MAP.passwordHash] = updates.passwordHash;
+    
+    // Hash password if it's being updated
+    if (updates.passwordHash !== undefined) {
+      // The passwordHash here is actually the new plain text password from the form
+      console.log(`[GSHEET User] Hashing new password for user: ${originalLogin}`);
+      const newHashedPassword = await hashPassword(updates.passwordHash);
+      updatedRow[USER_COLUMN_MAP.passwordHash] = newHashedPassword;
+    }
+
     if (updates.firstName !== undefined) updatedRow[USER_COLUMN_MAP.firstName] = updates.firstName || '';
     if (updates.middleName !== undefined) updatedRow[USER_COLUMN_MAP.middleName] = updates.middleName || '';
     if (updates.lastName !== undefined) updatedRow[USER_COLUMN_MAP.lastName] = updates.lastName || '';
@@ -735,7 +772,7 @@ export const updateUserInSheet = async (originalLogin: string, updates: Partial<
     await currentSheets.spreadsheets.values.update({
       spreadsheetId: SHEET_ID,
       range: userRowRange,
-      valueInputOption: 'USER_ENTERED',
+      valueInputOption: 'USER_ENTERED', // Ensure formulas are not interpreted
       requestBody: {
         values: [updatedRow],
       },
@@ -892,7 +929,7 @@ export const clearAllOrdersFromSheet = async (): Promise<boolean> => {
     // Получаем количество строк в таблице
     const response = await currentSheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
-      range: `${HISTORY_SHEET_NAME_ONLY}!A:A`,
+      range: `${HISTORY_SHEET_NAME_ONLY}!A:A`, // Check column A to determine row count
     });
     
     const rows = response.data.values;
