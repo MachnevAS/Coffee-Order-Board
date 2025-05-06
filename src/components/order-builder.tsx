@@ -30,7 +30,7 @@ import {
   SheetClose,
 } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
+import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { ProductCard } from './product-card';
 import { LOCAL_STORAGE_ORDER_BUILDER_SORT_KEY } from '@/lib/constants';
 import { fetchProductsFromSheet, addOrderToSheet, fetchOrdersFromSheet as fetchAllOrdersForPopularity } from '@/services/google-sheets-service';
@@ -261,6 +261,8 @@ export function OrderBuilder() {
   const [isLoading, setIsLoading] = useState(true);
   const [isCheckoutProcessing, setIsCheckoutProcessing] = useState(false);
   const [errorLoading, setErrorLoading] = useState<string | null>(null);
+  const [resolvedPopularityMap, setResolvedPopularityMap] = useState<Map<string, number>>(new Map());
+  const [isPopularityLoading, setIsPopularityLoading] = useState(false);
 
   const { user: currentUser } = useAuth(); // Get current user for employee details
   const { toast } = useToast();
@@ -307,7 +309,6 @@ export function OrderBuilder() {
     } catch (lsError) { console.error("OrderBuilder: Error accessing localStorage for sort option.", lsError); }
 
     loadProducts();
-    // No longer listening to localStorage for orders, popularity will be based on sheet data
   }, [loadProducts]);
 
   useEffect(() => {
@@ -323,18 +324,28 @@ export function OrderBuilder() {
   }, [order]);
 
 
-  // Calculate popularity map using Name|Volume keys from Google Sheet
-  const popularityNameVolumeMap = useMemo(async () => {
-      console.log("OrderBuilder: Recalculating popularity map from sheet, version:", popularityVersion);
-      return await calculatePopularityNameVolumeMapFromSheet();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [popularityVersion]); // Dependency only on popularityVersion
-
-  const [resolvedPopularityMap, setResolvedPopularityMap] = useState<Map<string, number>>(new Map());
-
   useEffect(() => {
-    popularityNameVolumeMap.then(map => setResolvedPopularityMap(map));
-  }, [popularityNameVolumeMap]);
+    const fetchPopularity = async () => {
+      if (!isClient) return; // Ensure this runs only on the client
+      setIsPopularityLoading(true);
+      console.log("OrderBuilder: Fetching popularity map from sheet, version:", popularityVersion);
+      try {
+        const map = await calculatePopularityNameVolumeMapFromSheet();
+        setResolvedPopularityMap(map);
+      } catch (error) {
+        console.error("OrderBuilder: Error fetching popularity map", error);
+        toast({
+          title: "Ошибка популярности",
+          description: "Не удалось загрузить данные о популярности товаров.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsPopularityLoading(false);
+      }
+    };
+
+    fetchPopularity();
+  }, [popularityVersion, isClient, toast]);
 
 
   // Map popularity to local product IDs and get ranking
@@ -494,6 +505,7 @@ export function OrderBuilder() {
 
   const handleRefresh = useCallback(async () => {
       await loadProducts(true);
+      setPopularityVersion(v => v + 1); // Also refresh popularity
       if (!errorLoading) {
          toast({ title: "Список обновлен", description: "Данные товаров загружены из Google Sheets." });
       }
@@ -520,7 +532,7 @@ export function OrderBuilder() {
             <TooltipProvider>
                 <Tooltip>
                     <TooltipTrigger asChild>
-                        <Button variant="ghost" size="icon" onClick={handleRefresh} className={cn("h-8 w-8 text-muted-foreground", isLoading && "animate-spin")} disabled={isLoading || isCheckoutProcessing}>
+                        <Button variant="ghost" size="icon" onClick={handleRefresh} className={cn("h-8 w-8 text-muted-foreground", (isLoading || isPopularityLoading) && "animate-spin")} disabled={isLoading || isCheckoutProcessing || isPopularityLoading}>
                             <RefreshCw className="h-4 w-4" />
                             <span className="sr-only">Обновить список</span>
                         </Button>
@@ -538,17 +550,17 @@ export function OrderBuilder() {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-8 pr-8 h-9"
-              disabled={isLoading || isCheckoutProcessing}
+              disabled={isLoading || isCheckoutProcessing || isPopularityLoading}
             />
             {searchTerm && (
-              <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setSearchTerm("")} disabled={isLoading || isCheckoutProcessing}>
+              <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setSearchTerm("")} disabled={isLoading || isCheckoutProcessing || isPopularityLoading}>
                 <X className="h-4 w-4" /> <span className="sr-only">Очистить поиск</span>
               </Button>
             )}
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-9 px-3 text-xs sm:text-sm" disabled={isLoading || isCheckoutProcessing}>
+              <Button variant="outline" size="sm" className="h-9 px-3 text-xs sm:text-sm" disabled={isLoading || isCheckoutProcessing || isPopularityLoading}>
                 <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" /> Сортировать
               </Button>
             </DropdownMenuTrigger>
@@ -575,7 +587,7 @@ export function OrderBuilder() {
             topProductsRanking={topProductsRanking}
             onAddToOrder={addToOrder}
             onRemoveFromOrder={removeFromOrder}
-            isLoading={isLoading}
+            isLoading={isLoading || isPopularityLoading}
             />
         )}
       </div>
@@ -602,7 +614,7 @@ export function OrderBuilder() {
             side="bottom"
             className="rounded-t-lg h-[75vh] flex flex-col p-0"
             aria-labelledby={orderSheetTitleId}
-            aria-describedby={undefined}
+            aria-describedby={undefined} // No specific description needed if title is clear
           >
             <VisuallyHidden><SheetTitle id={orderSheetTitleId}>Текущий заказ</SheetTitle></VisuallyHidden>
             <SheetHeader className="p-3 md:p-4 border-b text-left">
@@ -619,8 +631,8 @@ export function OrderBuilder() {
               onSelectPaymentMethod={handleSelectPaymentMethod}
               onCheckout={handleCheckout}
               onClearOrder={clearOrder}
-              orderCardTitleId={orderCardTitleId}
-              orderSheetTitleId={orderSheetTitleId}
+              orderCardTitleId={orderCardTitleId} // This ID is for the desktop card title
+              orderSheetTitleId={orderSheetTitleId} // This ID is for the sheet title (now visually hidden)
               isCheckoutProcessing={isCheckoutProcessing}
             />
           </SheetContent>
@@ -643,7 +655,7 @@ export function OrderBuilder() {
             onCheckout={handleCheckout}
             onClearOrder={clearOrder}
             orderCardTitleId={orderCardTitleId}
-            orderSheetTitleId={orderSheetTitleId}
+            orderSheetTitleId={orderSheetTitleId} // Pass sheet title ID though not directly used here
             isCheckoutProcessing={isCheckoutProcessing}
           />
         </Card>
@@ -651,4 +663,3 @@ export function OrderBuilder() {
     </div>
   );
 }
-
