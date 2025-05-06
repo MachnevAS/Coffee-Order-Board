@@ -1,57 +1,42 @@
-
-
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, memo } from 'react';
 import Image from "next/image";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 import type { Product } from "@/types/product";
 import { Edit, Trash2, Save, X, Coffee } from "lucide-react";
 import type { UseFormReturn } from "react-hook-form";
-import * as z from "zod"; // Import Zod
+import * as z from "zod";
 
-// Schema for form data (matches sheet columns except ID)
 const productFormSchema = z.object({
   name: z.string().min(2, "Название товара должно содержать не менее 2 символов"),
   volume: z.string().optional(),
-  // Use Zod schema for price validation and transformation
   price: z.string()
         .refine((val) => /^\d*([.,]\d+)?$/.test(val.trim()) || val.trim() === '', "Цена должна быть числом")
-        .transform((val) => val.trim() === '' ? undefined : parseFloat(val.replace(',', '.'))) // Convert to number or undefined
+        .transform((val) => val.trim() === '' ? undefined : parseFloat(val.replace(',', '.')))
         .refine((val) => val === undefined || val >= 0, "Цена должна быть 0 или больше")
         .optional(),
   imageUrl: z.string().url("Должен быть действительный URL").optional().or(z.literal('')),
   dataAiHint: z.string().optional(),
 });
 
-// Assuming ProductFormData matches the management form schema
 type ProductFormData = z.infer<typeof productFormSchema>;
 
 interface ProductListItemProps {
-  product: Product; // Contains local ID
+  product: Product;
   isEditing: boolean;
   editForm: UseFormReturn<ProductFormData>;
-  onStartEditing: (product: Product) => void; // Pass product with local ID
+  onStartEditing: (product: Product) => void;
   onCancelEditing: () => void;
   onEditSubmit: (data: ProductFormData) => void;
-  onRemoveProduct: (product: Product) => void; // Pass the full product object
+  onRemoveProduct: (product: Product) => void;
   popularityRank?: number;
 }
 
-export function ProductListItem({
+// Используем React.memo для предотвращения ненужных перерисовок
+export const ProductListItem = memo(function ProductListItem({
   product,
   isEditing,
   editForm,
@@ -62,93 +47,167 @@ export function ProductListItem({
   popularityRank,
 }: ProductListItemProps) {
   const [imgError, setImgError] = useState(false);
-  // Use picsum as fallback only if imageUrl is truly missing/invalid after fetch
   const imgSrc = !imgError && product.imageUrl ? product.imageUrl : `https://picsum.photos/100/80?random=${product.id}`;
   const useFallbackIcon = imgError || !product.imageUrl;
 
+  // Выносим форму редактирования в отдельный компонент для лучшей читабельности
+  const renderEditForm = () => (
+    <Form {...editForm}>
+      <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-3">
+        <FormField 
+          control={editForm.control} 
+          name="name" 
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel className="text-xs">Название</FormLabel>
+              <FormControl>
+                <Input {...field} value={field.value ?? ''} className="h-8 text-sm" />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )} 
+        />
+        <FormField 
+          control={editForm.control} 
+          name="volume" 
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel className="text-xs">Объём</FormLabel>
+              <FormControl>
+                <Input {...field} value={field.value ?? ''} className="h-8 text-sm" />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )} 
+        />
+        <FormField 
+          control={editForm.control} 
+          name="price" 
+          render={({ field: { onChange, ...restField } }) => (
+            <FormItem>
+              <FormLabel className="text-xs">Цена (₽)</FormLabel>
+              <FormControl>
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  step="any"
+                  className="h-8 text-sm"
+                  onChange={(e) => onChange(e.target.value)}
+                  value={restField.value !== undefined ? String(restField.value) : ''}
+                  {...restField}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField 
+          control={editForm.control} 
+          name="imageUrl" 
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel className="text-xs">URL изображения</FormLabel>
+              <FormControl>
+                <Input {...field} value={field.value ?? ''} className="h-8 text-sm" />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )} 
+        />
+        <FormField 
+          control={editForm.control} 
+          name="dataAiHint" 
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel className="text-xs">Подсказка ИИ</FormLabel>
+              <FormControl>
+                <Input {...field} value={field.value ?? ''} className="h-8 text-sm" />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )} 
+        />
+        <div className="flex justify-end gap-2 pt-2">
+          <Button 
+            type="button" 
+            variant="ghost" 
+            size="sm" 
+            onClick={onCancelEditing} 
+            className="text-xs px-2 h-8"
+          >
+            <X className="h-4 w-4 mr-1" /> Отмена
+          </Button>
+          <Button 
+            type="submit" 
+            size="sm" 
+            className="text-xs px-2 h-8"
+          >
+            <Save className="h-4 w-4 mr-1" /> Сохранить
+          </Button>
+        </div>
+      </form>
+    </Form>
+  );
+
+  // Выносим отображение товара в отдельный компонент
+  const renderProductDisplay = () => (
+    <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center gap-2 md:gap-3 overflow-hidden flex-grow">
+        <div className="relative h-10 w-10 md:h-12 md:w-12 rounded-md overflow-hidden flex-shrink-0 bg-muted flex items-center justify-center">
+          {useFallbackIcon ? (
+            <Coffee className="h-6 w-6 text-muted-foreground/50" />
+          ) : (
+            <Image
+              src={imgSrc}
+              alt={product.name}
+              fill
+              style={{objectFit:"cover"}}
+              data-ai-hint={product.dataAiHint || 'кофе'}
+              sizes="40px md:48px"
+              onError={() => setImgError(true)}
+              unoptimized={imgSrc.includes('picsum.photos')}
+            />
+          )}
+        </div>
+
+        <div className="overflow-hidden flex-grow">
+          <p className="font-medium truncate text-sm md:text-base">{product.name}</p>
+          {(product.volume || product.price !== undefined) && (
+            <p className="text-xs md:text-sm text-muted-foreground font-sans">
+              {product.volume && <span>{product.volume} / </span>}
+              {(product.price !== undefined ? product.price.toFixed(0) : 'N/A')} ₽
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="flex gap-1 flex-shrink-0">
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          className="h-8 w-8" 
+          onClick={() => onStartEditing(product)}
+        >
+          <Edit className="h-4 w-4" />
+          <span className="sr-only">Редактировать {product.name}</span>
+        </Button>
+
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" 
+          onClick={() => onRemoveProduct(product)}
+        >
+          <Trash2 className="h-4 w-4" />
+          <span className="sr-only">Удалить {product.name}</span>
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
     <li key={product.id} className="flex flex-col p-3 border rounded-md bg-card transition-colors duration-150">
-      {isEditing ? (
-        <Form {...editForm}>
-          <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-3">
-             {/* Form fields remain the same */}
-             <FormField control={editForm.control} name="name" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Название</FormLabel><FormControl><Input {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
-             <FormField control={editForm.control} name="volume" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Объём</FormLabel><FormControl><Input {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
-             {/* Use text input for price, validation handled by Zod */}
-             <FormField control={editForm.control} name="price" render={({ field: { onChange, ...restField } }) => (
-                 <FormItem>
-                   <FormLabel className="text-xs">Цена (₽)</FormLabel>
-                   <FormControl>
-                     {/* Convert number back to string for input value */}
-                     <Input
-                       type="number" // Change type to number
-                       inputMode="decimal" // Keep for mobile keyboard hints
-                       // Remove pattern attribute
-                       step="any" // Allow decimals
-                       className="h-8 text-sm"
-                       onChange={(e) => onChange(e.target.value)} // Pass the string value
-                       value={restField.value !== undefined ? String(restField.value) : ''} // Display string value, Zod handles conversion
-                       {...restField} // Pass other field props like name, onBlur, ref
-                     />
-                   </FormControl>
-                   <FormMessage />
-                 </FormItem>
-               )}
-             />
-             <FormField control={editForm.control} name="imageUrl" render={({ field }) => ( <FormItem><FormLabel className="text-xs">URL изображения</FormLabel><FormControl><Input {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
-             <FormField control={editForm.control} name="dataAiHint" render={({ field }) => ( <FormItem><FormLabel className="text-xs">Подсказка ИИ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} className="h-8 text-sm" /></FormControl><FormMessage /></FormItem> )} />
-             <div className="flex justify-end gap-2 pt-2">
-                  <Button type="button" variant="ghost" size="sm" onClick={onCancelEditing} className="text-xs px-2 h-8"><X className="h-4 w-4 mr-1" /> Отмена</Button>
-                  <Button type="submit" size="sm" className="text-xs px-2 h-8"><Save className="h-4 w-4 mr-1" /> Сохранить</Button>
-             </div>
-          </form>
-        </Form>
-      ) : (
-        <div className="flex items-center justify-between gap-2">
-           <div className="flex items-center gap-2 md:gap-3 overflow-hidden flex-grow">
-             <div className="relative h-10 w-10 md:h-12 md:w-12 rounded-md overflow-hidden flex-shrink-0 bg-muted flex items-center justify-center">
-                  {useFallbackIcon ? (
-                    <Coffee className="h-6 w-6 text-muted-foreground/50" />
-                  ) : (
-                     <Image
-                      src={imgSrc} // Already determined above
-                      alt={product.name}
-                      fill
-                      style={{objectFit:"cover"}}
-                      data-ai-hint={product.dataAiHint || 'кофе'}
-                      sizes="40px md:48px"
-                      onError={() => setImgError(true)}
-                      unoptimized={imgSrc.includes('picsum.photos')}
-                    />
-                  )}
-             </div>
-
-            <div className="overflow-hidden flex-grow">
-                <p className="font-medium truncate text-sm md:text-base">{product.name}</p>
-                {(product.volume || product.price !== undefined) && (
-                    <p className="text-xs md:text-sm text-muted-foreground font-sans">
-                        {product.volume && <span>{product.volume} / </span>}
-                        {(product.price !== undefined ? product.price.toFixed(0) : 'N/A')} ₽
-                    </p>
-                )}
-            </div>
-           </div>
-
-          <div className="flex gap-1 flex-shrink-0">
-               {/* Edit button still uses local ID implicitly via onStartEditing */}
-               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onStartEditing(product)}>
-                 <Edit className="h-4 w-4" />
-                 <span className="sr-only">Редактировать {product.name}</span>
-               </Button>
-
-               {/* Delete button now triggers handler with the full product object */}
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => onRemoveProduct(product)}>
-                    <Trash2 className="h-4 w-4" />
-                    <span className="sr-only">Удалить {product.name}</span>
-                </Button>
-          </div>
-        </div>
-      )}
+      {isEditing ? renderEditForm() : renderProductDisplay()}
     </li>
   );
-}
+});

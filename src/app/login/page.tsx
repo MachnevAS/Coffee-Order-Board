@@ -1,4 +1,4 @@
-'use client'; // Add 'use client' for hooks
+'use client';
 
 import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -6,14 +6,15 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { useRouter } from 'next/navigation'; // Use next/navigation for App Router
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle } from 'lucide-react';
 
+// Схема валидации вынесена за пределы компонента для оптимизации
 const loginSchema = z.object({
   login: z.string().min(1, 'Логин обязателен'),
   password: z.string().min(1, 'Пароль обязателен'),
@@ -37,18 +38,25 @@ export default function LoginPage() {
   });
 
   const onSubmit = async (data: LoginFormValues) => {
+    if (isLoading) return; // Предотвращаем множественные отправки
+    
     setError(null);
     setIsLoading(true);
+    
     try {
       const loginSuccessful = await login(data.login, data.password);
+      
       if (loginSuccessful) {
         toast({
           title: 'Вход выполнен',
           description: 'Добро пожаловать!',
         });
-        // Ensure redirection happens after state updates related to login
-        router.push('/'); // Redirect to home page after successful login
-        router.refresh(); // Force refresh to ensure layout/auth state is updated
+        
+        // Используем setTimeout для гарантии выполнения после обновления состояния
+        setTimeout(() => {
+          router.push('/');
+          router.refresh();
+        }, 0);
       } else {
         setError('Неверный логин или пароль');
         toast({
@@ -70,8 +78,17 @@ export default function LoginPage() {
     }
   };
 
+  // Мемоизируем форму ошибки для предотвращения ненужных перерисовок
+  const errorAlert = error ? (
+    <Alert variant="destructive">
+      <AlertCircle className="h-4 w-4" />
+      <AlertTitle>Ошибка</AlertTitle>
+      <AlertDescription>{error}</AlertDescription>
+    </Alert>
+  ) : null;
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-4">
+    <main className="flex flex-col items-center justify-center p-4" style={{height: "80vh"}}>
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle className="text-2xl">Вход</CardTitle>
@@ -87,7 +104,12 @@ export default function LoginPage() {
                   <FormItem>
                     <FormLabel>Логин</FormLabel>
                     <FormControl>
-                      <Input placeholder="Ваш логин" {...field} disabled={isLoading} />
+                      <Input 
+                        placeholder="Ваш логин" 
+                        {...field} 
+                        disabled={isLoading}
+                        autoComplete="username" 
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -100,20 +122,24 @@ export default function LoginPage() {
                   <FormItem>
                     <FormLabel>Пароль</FormLabel>
                     <FormControl>
-                      <Input type="password" placeholder="Ваш пароль" {...field} disabled={isLoading} />
+                      <Input 
+                        type="password" 
+                        placeholder="Ваш пароль" 
+                        {...field} 
+                        disabled={isLoading}
+                        autoComplete="current-password" 
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-              {error && (
-                <Alert variant="destructive">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertTitle>Ошибка</AlertTitle>
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
-              <Button type="submit" className="w-full" disabled={isLoading}>
+              {errorAlert}
+              <Button 
+                type="submit" 
+                className="w-full" 
+                disabled={isLoading}
+              >
                 {isLoading ? 'Вход...' : 'Войти'}
               </Button>
             </form>
