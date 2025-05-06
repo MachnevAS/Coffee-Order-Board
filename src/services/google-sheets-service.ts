@@ -635,10 +635,12 @@ export const syncRawProductsToSheet = async () => {
 // --- User Authentication Functions ---
 
 // Simple XOR "encryption" - NOT FOR PRODUCTION USE
-const xorEncryptDecrypt = (text: string, key: string): string => {
-  let result = "";
-  for (let i = 0; i < text.length; i++) {
-    result += String.fromCharCode(text.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+// Uses Buffer to correctly handle byte operations
+const xorEncryptDecrypt = (input: Buffer, key: string): Buffer => {
+  const keyBytes = Buffer.from(key, 'utf-8');
+  const result = Buffer.alloc(input.length);
+  for (let i = 0; i < input.length; i++) {
+    result[i] = input[i] ^ keyBytes[i % keyBytes.length];
   }
   return result;
 };
@@ -646,10 +648,12 @@ const xorEncryptDecrypt = (text: string, key: string): string => {
 // Hash password (simple XOR encryption + Base64 for demonstration)
 export const hashPassword = async (password: string): Promise<string> => {
   console.warn("[Security] Using simple XOR + Base64 for password 'encryption'. THIS IS NOT SECURE FOR PRODUCTION. Key used:", ENCRYPTION_KEY.substring(0,5) + "...");
-  const xored = xorEncryptDecrypt(password, ENCRYPTION_KEY);
-  const base64Encoded = Buffer.from(xored).toString('base64'); // Encode to Base64
+  const passwordBuffer = Buffer.from(password, 'utf-8');
+  const xoredBuffer = xorEncryptDecrypt(passwordBuffer, ENCRYPTION_KEY);
+  const base64Encoded = xoredBuffer.toString('base64'); // Encode to Base64
   return `${ENCRYPTION_TAG}${base64Encoded}`;
 };
+
 
 // Get user data from sheet
 export const getUserDataFromSheet = async (login: string): Promise<User | null> => {
@@ -693,19 +697,21 @@ export const verifyPassword = async (inputPassword: string, storedPasswordWithTa
   if (storedPasswordWithTag.startsWith(ENCRYPTION_TAG)) {
     const base64EncodedPassword = storedPasswordWithTag.substring(ENCRYPTION_TAG.length);
     try {
-      const xoredStoredPassword = Buffer.from(base64EncodedPassword, 'base64').toString(); // Decode from Base64
-      const decryptedStoredPassword = xorEncryptDecrypt(xoredStoredPassword, ENCRYPTION_KEY);
+      const xoredStoredPasswordBuffer = Buffer.from(base64EncodedPassword, 'base64'); // Decode from Base64 to Buffer
+      const decryptedStoredPasswordBuffer = xorEncryptDecrypt(xoredStoredPasswordBuffer, ENCRYPTION_KEY);
+      const decryptedStoredPassword = decryptedStoredPasswordBuffer.toString('utf-8'); // Convert decrypted Buffer to string
       console.log(`[Security] Verifying 'encrypted' (XOR+Base64) password. Decrypted stored: "${decryptedStoredPassword}". Key used:`, ENCRYPTION_KEY.substring(0,5) + "...");
       return inputPassword === decryptedStoredPassword;
     } catch (e) {
-      console.error("[GSHEET VerifyPassword] Error decoding Base64 password:", e);
-      return false; // Invalid Base64 string
+      console.error("[GSHEET VerifyPassword] Error decoding/decrypting password:", e);
+      return false; 
     }
   } else {
     console.warn("[Security] Comparing plain text password. User should update their password.");
     return inputPassword === storedPasswordWithTag;
   }
 };
+
 
 // Find user row by login
 const findUserRowIndexByLogin = async (login: string) => {
