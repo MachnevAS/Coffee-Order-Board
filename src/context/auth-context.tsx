@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { createContext, useState, useContext, useEffect, useCallback, ReactNode } from 'react';
@@ -102,7 +103,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
  const updateUser = useCallback(async (updates: Partial<User>): Promise<boolean> => {
     if (!user) {
         console.warn("[AuthContext] Attempted to update user while not logged in.");
-        return false;
+        throw new Error("Пользователь не авторизован.");
     }
     setIsLoading(true);
     console.log(`[AuthContext] Attempting to update user: ${user.login}`);
@@ -120,11 +121,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             return true;
         } else {
             console.error("[AuthContext] User update failed:", res.status, data.error || 'No error message from API');
-            return false;
+            throw new Error(data.error || 'Не удалось обновить данные пользователя.');
         }
-    } catch (error) {
+    } catch (error: any) {
         console.error('[AuthContext] Update user API error:', error);
-        return false;
+        throw error; // Re-throw to be caught by UserProfileModal
     } finally {
         setIsLoading(false);
         console.log("[AuthContext] User update attempt finished.");
@@ -134,7 +135,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const verifyAndChangePassword = useCallback(async (currentPassword: string, newPassword: string): Promise<boolean> => {
     if (!user) {
       console.warn("[AuthContext] Attempted to change password while not logged in.");
-      return false;
+      throw new Error("Пользователь не авторизован.");
     }
     setIsLoading(true);
     console.log(`[AuthContext] Attempting to change password for user: ${user.login}`);

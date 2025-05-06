@@ -57,6 +57,15 @@ const profileSchema = z.object({
   .refine((data) => data.newPassword === data.confirmNewPassword, {
     message: 'Новые пароли не совпадают',
     path: ['confirmNewPassword'],
+  })
+  .refine((data) => {
+    if (data.newPassword && data.currentPassword) {
+        return data.newPassword !== data.currentPassword;
+    }
+    return true;
+  }, {
+    message: 'Новый пароль не должен совпадать с текущим',
+    path: ['newPassword'],
   });
 
 
@@ -78,13 +87,14 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
+    // Default values should match the schema structure
     defaultValues: {
       login: '',
       firstName: '',
       middleName: '',
       lastName: '',
       position: '',
-      iconColor: '',
+      iconColor: '#cccccc', // Ensure this matches the schema (optional or literal empty string allowed)
       currentPassword: '',
       newPassword: '',
       confirmNewPassword: '',
@@ -93,16 +103,15 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
 
   useEffect(() => {
     if (user && isOpen) {
-      // Only reset the form if the modal is newly opened for this user
-      // or if the user being edited has changed.
-      if (formInitializedForUserId !== user.id) {
+      // Type-safe comparison for user ID
+      if (String(formInitializedForUserId) !== String(user.id)) {
         form.reset({
           login: user.login || '',
           firstName: user.firstName || '',
           middleName: user.middleName || '',
           lastName: user.lastName || '',
           position: user.position || '',
-          iconColor: user.iconColor || '#cccccc', // Default to a neutral color if undefined
+          iconColor: user.iconColor || '#cccccc', 
           currentPassword: '',
           newPassword: '',
           confirmNewPassword: '',
@@ -112,10 +121,9 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
         setFormInitializedForUserId(user.id);
       }
     } else if (!isOpen) {
-      // Reset the tracking state when the modal is closed
       setFormInitializedForUserId(null);
     }
-  }, [user, isOpen, form, formInitializedForUserId]);
+  }, [user, isOpen, formInitializedForUserId, form.reset, form.clearErrors]); // Removed form from dependencies
 
   const onSubmit = async (data: ProfileFormValues) => {
     setError(null);
@@ -135,13 +143,15 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
     };
 
     const changedProfileUpdates = Object.entries(profileUpdates).reduce((acc, [key, value]) => {
-      if (user && (user[key as keyof User] !== value || (user[key as keyof User] === undefined && value === ''))) {
-           if (key === 'iconColor' && user.iconColor === undefined && value === '') {
-           } else {
-            acc[key as keyof Partial<User>] = value;
-           }
-      }
-      return acc;
+        // Check if the user object exists and if the value has actually changed
+        if (user && (user[key as keyof User] !== value && 
+                     !(user[key as keyof User] === undefined && (value === '' || value === undefined)) &&
+                     !(user[key as keyof User] === '' && value === undefined)
+                    )
+           ) {
+                acc[key as keyof Partial<User>] = value;
+        }
+        return acc;
     }, {} as Partial<User>);
 
 
@@ -154,27 +164,21 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
                 description: 'Основные данные вашего профиля успешно сохранены.',
                 });
             } else {
-                setError(error || 'Не удалось обновить основные данные профиля.');
+                 // Error is likely already set by updateUser in auth-context if it throws
+                if(!error) setError('Не удалось обновить основные данные профиля.');
             }
         } catch (err: any) {
             profileUpdateSuccess = false;
             const message = err.response?.data?.error || err.message || 'Произошла ошибка при обновлении основных данных профиля.';
             setError(message);
             console.error('Profile update error:', err);
-            toast({
-                title: 'Ошибка сервера',
-                description: message,
-                variant: 'destructive',
-            });
+            // Toast handled by verifyAndChangePassword for specific errors
         }
     }
 
 
     if (data.newPassword && data.currentPassword && data.confirmNewPassword) {
-      if (data.newPassword === data.currentPassword) {
-        form.setError("newPassword", { type: "manual", message: "Новый пароль не должен совпадать с текущим." });
-        passwordChangeSuccess = false;
-      } else {
+        // Schema validation already checks if newPassword === currentPassword
         try {
           passwordChangeSuccess = await verifyAndChangePassword(data.currentPassword, data.newPassword);
           if (passwordChangeSuccess) {
@@ -182,27 +186,29 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
               title: 'Пароль изменен',
               description: 'Ваш пароль успешно обновлен.',
             });
-            form.reset({
-              ...form.getValues(), 
+            form.reset({ // Reset password fields after successful change
+              ...form.getValues(), // Keep other form values
               currentPassword: '',
               newPassword: '',
               confirmNewPassword: '',
             });
           } else {
-             const currentErrorMessage = form.formState.errors.currentPassword?.message || form.formState.errors.newPassword?.message || 'Не удалось изменить пароль. Проверьте текущий пароль.';
-             setError(currentErrorMessage); 
-             if (!form.formState.errors.currentPassword && !form.formState.errors.newPassword) {
-                form.setError("currentPassword", { type: "manual", message: currentErrorMessage});
-             }
+             // Error message is set by verifyAndChangePassword via thrown error
+             // No need to set form error here if auth context handles it
           }
         } catch (err: any) {
           passwordChangeSuccess = false;
           const message = err.response?.data?.error || err.message || 'Произошла ошибка при смене пароля.';
           setError(message); 
-          form.setError("currentPassword", {type: "manual", message}); 
+           if (message.toLowerCase().includes("текущий пароль")) {
+                form.setError("currentPassword", {type: "manual", message});
+            } else if (message.toLowerCase().includes("новый пароль")){
+                form.setError("newPassword", {type: "manual", message});
+            } else {
+                 form.setError("currentPassword", {type: "manual", message}); // General password error
+            }
           console.error('Password change error:', err);
         }
-      }
     }
 
     setIsSaving(false);
@@ -211,7 +217,8 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
     const noPasswordChangeAttempted = !data.newPassword;
 
     if (noProfileChangesAttempted && noPasswordChangeAttempted) {
-        setIsOpen(false); 
+        // If no changes were made and no password change was attempted, just close.
+        if (profileUpdateSuccess && passwordChangeSuccess) setIsOpen(false); 
         return;
     }
 
@@ -243,7 +250,7 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
     <Dialog open={isOpen} onOpenChange={(open) => {
       if (!isLoading) setIsOpen(open); 
     }}>
-      <DialogContent className={cn("sm:max-w-md p-4 sm:p-6", isOpen ? "max-h-[90vh] overflow-y-auto" : "")}>
+      <DialogContent className={cn("sm:max-w-md p-4 sm:p-6 w-[90vw] sm:w-full", isOpen ? "max-h-[90vh] overflow-y-auto" : "")}>
         <DialogHeader>
           <DialogTitle>Редактировать профиль</DialogTitle>
           <DialogDescription>
@@ -292,8 +299,7 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
                 type="color" 
                 {...form.register('iconColor')} 
                 disabled={isLoading} 
-                className="h-10 w-full sm:w-14 p-1" 
-                defaultValue="#cccccc"
+                className="h-10 w-full sm:w-14 p-1"
               />
               {form.formState.errors.iconColor && <p className="text-xs text-destructive">{form.formState.errors.iconColor.message}</p>}
             </div>
@@ -344,5 +350,3 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
     </Dialog>
   );
 }
-
-
