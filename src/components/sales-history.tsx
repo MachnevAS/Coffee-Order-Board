@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -16,10 +17,9 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { Calendar as CalendarIcon, Download, Trash2, CreditCard, Banknote, Smartphone, Trash, ArrowUpDown } from 'lucide-react';
+import { Calendar as CalendarIcon, ExternalLink, Trash2, CreditCard, Banknote, Smartphone, Trash, ArrowUpDown, RefreshCw } from 'lucide-react';
 import { format, parseISO, startOfDay, endOfDay, isValid } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import * as XLSX from 'xlsx';
 import type { DateRange } from 'react-day-picker';
 import type { Order, PaymentMethod } from '@/types/order';
 import { Badge } from '@/components/ui/badge';
@@ -38,12 +38,21 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from '@/lib/utils';
-import { LOCAL_STORAGE_ORDERS_KEY, LOCAL_STORAGE_SALES_HISTORY_SORT_KEY } from '@/lib/constants';
+import { fetchOrdersFromSheet, deleteOrderFromSheet, clearAllOrdersFromSheet } from '@/services/google-sheets-service'; // Import sheet service functions
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-type SortKey = 'timestamp' | 'totalPrice' | 'paymentMethod';
+const GOOGLE_SHEET_ID = process.env.NEXT_PUBLIC_GOOGLE_SHEET_ID || process.env.GOOGLE_SHEET_ID;
+const GOOGLE_HISTORY_SHEET_NAME = process.env.NEXT_PUBLIC_GOOGLE_HISTORY_SHEET_NAME || process.env.GOOGLE_HISTORY_SHEET_NAME;
+
+const googleSheetHistoryUrl = GOOGLE_SHEET_ID && GOOGLE_HISTORY_SHEET_NAME
+  ? `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/edit#gid=${encodeURIComponent(GOOGLE_HISTORY_SHEET_NAME)}` // Assuming gid can be found or manually set if name doesn't work
+  : '#';
+
+
+type SortKey = 'timestamp' | 'totalPrice' | 'paymentMethod' | 'employee';
 type SortDirection = 'asc' | 'desc';
 type SortConfig = { key: SortKey; direction: SortDirection } | null;
-const DEFAULT_SORT: SortConfig = null;
+const DEFAULT_SORT: SortConfig = { key: 'timestamp', direction: 'desc' }; // Default sort by newest
 
 // Форматирование валюты
 const formatCurrency = (amount: number) => `${amount.toFixed(0)} ₽`;
@@ -70,101 +79,48 @@ const SortIcon = React.memo(({ sortKey, currentSortConfig }: { sortKey: SortKey;
 SortIcon.displayName = 'SortIcon';
 
 export function SalesHistory() {
-  // Состояния
   const [orders, setOrders] = useState<Order[]>([]);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [sortConfig, setSortConfig] = useState<SortConfig>(DEFAULT_SORT);
   const [isClient, setIsClient] = useState(false);
   const [isClearHistoryDialogOpen, setIsClearHistoryDialogOpen] = useState(false);
   const [orderToDelete, setOrderToDelete] = useState<Order | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorLoading, setErrorLoading] = useState<string | null>(null);
+
 
   const { toast } = useToast();
 
-  // Загрузка данных из localStorage
+  const loadOrders = useCallback(async (showLoadingIndicator = true) => {
+    if (showLoadingIndicator) setIsLoading(true);
+    setErrorLoading(null);
+    try {
+      const fetchedOrders = await fetchOrdersFromSheet();
+      setOrders(fetchedOrders);
+    } catch (error: any) {
+      console.error("SalesHistory: Failed to load orders from sheet:", error);
+      const errorMessage = error.message || "Не удалось загрузить историю продаж из Google Sheets.";
+      setErrorLoading(errorMessage);
+      toast({
+        title: "Ошибка загрузки истории",
+        description: errorMessage,
+        variant: "destructive",
+      });
+      setOrders([]);
+    } finally {
+      if (showLoadingIndicator) setIsLoading(false);
+    }
+  }, [toast]);
+
   useEffect(() => {
     setIsClient(true);
+    loadOrders();
+  }, [loadOrders]);
 
-    const loadFromLocalStorage = () => {
-      try {
-        // Загрузка заказов
-        const storedOrders = localStorage.getItem(LOCAL_STORAGE_ORDERS_KEY);
-        if (storedOrders) {
-          try {
-            const parsedOrders = JSON.parse(storedOrders);
-            if (Array.isArray(parsedOrders) && parsedOrders.every(o => typeof o.id === 'string' && typeof o.timestamp === 'string')) {
-              setOrders(parsedOrders);
-            } else {
-              console.error('SalesHistory: Parsed orders is not valid.', parsedOrders);
-              localStorage.removeItem(LOCAL_STORAGE_ORDERS_KEY);
-            }
-          } catch (e) {
-            console.error('SalesHistory: Failed to parse orders', e);
-            localStorage.removeItem(LOCAL_STORAGE_ORDERS_KEY);
-          }
-        }
-
-        // Загрузка конфигурации сортировки
-        const storedSortConfig = localStorage.getItem(LOCAL_STORAGE_SALES_HISTORY_SORT_KEY);
-        if (storedSortConfig) {
-          try {
-            const parsedSortConfig = JSON.parse(storedSortConfig);
-            if (parsedSortConfig && 
-                ['timestamp', 'totalPrice', 'paymentMethod'].includes(parsedSortConfig.key) && 
-                ['asc', 'desc'].includes(parsedSortConfig.direction)) {
-              setSortConfig(parsedSortConfig);
-            } else {
-              localStorage.removeItem(LOCAL_STORAGE_SALES_HISTORY_SORT_KEY);
-            }
-          } catch (e) {
-            console.error("SalesHistory: Failed to parse sort config", e);
-            localStorage.removeItem(LOCAL_STORAGE_SALES_HISTORY_SORT_KEY);
-          }
-        }
-      } catch (error) {
-        console.error("SalesHistory: Error accessing localStorage:", error);
-      }
-    };
-
-    loadFromLocalStorage();
-
-    // Слушатель изменений в localStorage
-    const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === LOCAL_STORAGE_ORDERS_KEY && event.newValue !== null) {
-        try {
-          const updatedOrders = JSON.parse(event.newValue);
-          if (Array.isArray(updatedOrders)) {
-            setOrders(updatedOrders);
-          }
-        } catch (e) {
-          console.error("Error processing storage event:", e);
-        }
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
-
-  // Сохранение конфигурации сортировки
-  useEffect(() => {
-    if (isClient) {
-      try {
-        if (sortConfig) {
-          localStorage.setItem(LOCAL_STORAGE_SALES_HISTORY_SORT_KEY, JSON.stringify(sortConfig));
-        } else {
-          localStorage.removeItem(LOCAL_STORAGE_SALES_HISTORY_SORT_KEY);
-        }
-      } catch (e) {
-        console.error("Failed to save sort config:", e);
-      }
-    }
-  }, [sortConfig, isClient]);
-
-  // Фильтрация и сортировка заказов
+  // Filter and sort orders
   const filteredAndSortedOrders = useMemo(() => {
     let filtered = [...orders];
 
-    // Фильтрация по диапазону дат
     if (dateRange?.from) {
       const start = startOfDay(dateRange.from);
       const end = dateRange.to ? endOfDay(dateRange.to) : endOfDay(dateRange.from);
@@ -173,12 +129,12 @@ export function SalesHistory() {
           const orderDate = parseISO(order.timestamp);
           return isValid(orderDate) && orderDate >= start && orderDate <= end;
         } catch (e) {
+          console.warn(`Invalid date encountered for order ${order.id}: ${order.timestamp}`);
           return false;
         }
       });
     }
 
-    // Сортировка
     if (sortConfig) {
       filtered.sort((a, b) => {
         const { key, direction } = sortConfig;
@@ -194,124 +150,102 @@ export function SalesHistory() {
           case 'totalPrice':
             comparison = a.totalPrice - b.totalPrice;
             break;
+          case 'employee':
+            comparison = (a.employee || '').localeCompare(b.employee || '', ru.code);
+            break;
         }
-
         return direction === 'asc' ? comparison : -comparison;
       });
-    } else {
-      // По умолчанию - сначала новые
-      filtered.sort((a, b) => parseISO(b.timestamp).getTime() - parseISO(a.timestamp).getTime());
     }
-
     return filtered;
   }, [orders, dateRange, sortConfig]);
 
-  // Экспорт в Excel
-  const handleExport = useCallback(() => {
-    if (!isClient || filteredAndSortedOrders.length === 0) return;
 
-    const dataToExport = filteredAndSortedOrders.map((order) => ({
-      'ID Заказа': order.id,
-      'Дата и время': format(parseISO(order.timestamp), 'dd.MM.yyyy HH:mm:ss', { locale: ru }),
-      'Товары': order.items
-        .map((item) => `${item.name}${item.volume ? ` (${item.volume})` : ''} (x${item.quantity})`)
-        .join(', '),
-      'Способ оплаты': order.paymentMethod || 'Не указан',
-      'Итого (₽)': order.totalPrice.toFixed(0),
-    }));
-
-    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
-    worksheet['!cols'] = [{ wch: 25 }, { wch: 20 }, { wch: 60 }, { wch: 15 }, { wch: 15 }];
-
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'История Продаж');
-
-    const fromDateStr = dateRange?.from ? format(dateRange.from, 'dd-MM-yyyy') : 'начала';
-    const toDateStr = dateRange?.to ? format(dateRange.to, 'dd-MM-yyyy') : (dateRange?.from ? format(dateRange.from, 'dd-MM-yyyy') : 'конца');
-    const filename = `История_продаж_${fromDateStr}_${toDateStr}.xlsx`;
-    
-    XLSX.writeFile(workbook, filename);
-  }, [isClient, filteredAndSortedOrders, dateRange]);
-
-  // Обработчики удаления заказа
   const initiateDeleteOrder = useCallback((order: Order) => {
+    if (isLoading) return;
     setOrderToDelete(order);
-  }, []);
+  }, [isLoading]);
 
-  const confirmDeleteOrder = useCallback(() => {
-    if (!orderToDelete) return;
+  const confirmDeleteOrder = useCallback(async () => {
+    if (!orderToDelete || isLoading) return;
     
     const orderIdToDelete = orderToDelete.id;
-    const updatedOrders = orders.filter(order => order.id !== orderIdToDelete);
-    
-    setOrders(updatedOrders);
+    setIsLoading(true); // Set loading true during delete operation
+    const success = await deleteOrderFromSheet(orderIdToDelete);
     setOrderToDelete(null);
     
-    try {
-      localStorage.setItem(LOCAL_STORAGE_ORDERS_KEY, JSON.stringify(updatedOrders));
+    if (success) {
+      await loadOrders(false); // Reload orders without global loading indicator
       toast({ 
         title: "Заказ удален", 
-        description: `Заказ ${orderIdToDelete} был успешно удален.`, 
+        description: `Заказ ${orderIdToDelete} был успешно удален из Google Sheets.`, 
         variant: "destructive" 
       });
-    } catch (e) {
-      console.error("Failed to update localStorage after delete:", e);
+    } else {
       toast({ 
-        title: "Ошибка сохранения", 
-        description: "Не удалось обновить историю в localStorage.", 
+        title: "Ошибка удаления", 
+        description: "Не удалось удалить заказ из Google Sheets.", 
         variant: "destructive" 
       });
     }
-  }, [orderToDelete, orders, toast]);
+    setIsLoading(false);
+  }, [orderToDelete, toast, loadOrders, isLoading]);
 
   const cancelDeleteOrder = useCallback(() => {
     setOrderToDelete(null);
   }, []);
 
-  // Обработчики очистки истории
   const initiateClearAllOrders = useCallback(() => {
+     if (isLoading) return;
     setIsClearHistoryDialogOpen(true);
-  }, []);
+  }, [isLoading]);
 
-  const confirmClearAllOrders = useCallback(() => {
-    setOrders([]);
+  const confirmClearAllOrders = useCallback(async () => {
+    if (isLoading) return;
     setIsClearHistoryDialogOpen(false);
+    setIsLoading(true);
+    const success = await clearAllOrdersFromSheet();
     
-    try {
-      localStorage.removeItem(LOCAL_STORAGE_ORDERS_KEY);
+    if (success) {
+      await loadOrders(false);
       toast({ 
         title: "История очищена", 
-        description: "Вся история продаж была удалена.", 
+        description: "Вся история продаж была удалена из Google Sheets.", 
         variant: "destructive" 
       });
-    } catch (e) {
-      console.error("Failed to clear localStorage:", e);
+    } else {
       toast({ 
-        title: "Ошибка очистки хранилища", 
-        description: "Не удалось очистить localStorage.", 
+        title: "Ошибка очистки", 
+        description: "Не удалось очистить историю продаж в Google Sheets.", 
         variant: "destructive" 
       });
     }
-  }, [toast]);
+    setIsLoading(false);
+  }, [toast, loadOrders, isLoading]);
 
   const cancelClearAllOrders = useCallback(() => {
     setIsClearHistoryDialogOpen(false);
   }, []);
 
-  // Обработчик изменения сортировки
   const requestSort = useCallback((key: SortKey) => {
     setSortConfig(prevConfig => {
       if (prevConfig?.key === key) {
-        if (prevConfig.direction === 'asc') {
-          return { key, direction: 'desc' };
-        }
-        return null; // Сброс сортировки
+        if (prevConfig.direction === 'asc') return { key, direction: 'desc' };
+        if (prevConfig.direction === 'desc') return DEFAULT_SORT; // reset to default
       }
       return { key, direction: 'asc' };
     });
   }, []);
 
-  // Состояние загрузки при SSR
+  const handleRefresh = useCallback(async () => {
+      if (isLoading) return;
+      await loadOrders(true);
+      if (!errorLoading) {
+         toast({ title: "История обновлена", description: "Данные загружены из Google Sheets." });
+      }
+  }, [loadOrders, toast, isLoading, errorLoading]);
+
+
   if (!isClient) {
     return (
       <Card>
@@ -327,11 +261,10 @@ export function SalesHistory() {
         <CardTitle className="text-lg md:text-xl">История продаж</CardTitle>
       </CardHeader>
       <CardContent className="p-4 md:p-6 pt-0">
-        {/* Элементы управления */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3 md:gap-4">
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline" className="w-full sm:w-auto justify-start text-left font-normal text-xs md:text-sm h-9 md:h-10 px-3">
+              <Button variant="outline" className="w-full sm:w-auto justify-start text-left font-normal text-xs md:text-sm h-9 md:h-10 px-3" disabled={isLoading}>
                 <CalendarIcon className="mr-1.5 h-3.5 w-3.5" />
                 {dateRange?.from ? (
                   dateRange.to ? 
@@ -356,13 +289,26 @@ export function SalesHistory() {
           </Popover>
           
           <div className="flex w-full sm:w-auto justify-end gap-2">
+             <TooltipProvider>
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <Button variant="ghost" size="icon" onClick={handleRefresh} className={cn("h-9 w-9 md:h-10 md:w-10 text-muted-foreground", isLoading && "animate-spin")} disabled={isLoading}>
+                            <RefreshCw className="h-4 w-4 md:h-5 md:w-5" />
+                            <span className="sr-only">Обновить историю</span>
+                        </Button>
+                    </TooltipTrigger>
+                    <TooltipContent><p>Обновить историю из Google Sheets</p></TooltipContent>
+                </Tooltip>
+            </TooltipProvider>
             <Button 
-              onClick={handleExport} 
-              disabled={filteredAndSortedOrders.length === 0} 
+              asChild
               size="sm" 
               className="h-9 md:h-10 text-xs md:text-sm px-3"
+              disabled={isLoading}
             >
-              <Download className="mr-1.5 h-3.5 w-3.5" /> Выгрузить в Excel
+              <a href={googleSheetHistoryUrl} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> Открыть таблицу
+              </a>
             </Button>
             
             <AlertDialog open={isClearHistoryDialogOpen} onOpenChange={setIsClearHistoryDialogOpen}>
@@ -371,7 +317,7 @@ export function SalesHistory() {
                   variant="destructive" 
                   size="sm" 
                   className="h-9 md:h-10 text-xs md:text-sm px-3" 
-                  disabled={orders.length === 0}
+                  disabled={orders.length === 0 || isLoading}
                 >
                   <Trash className="mr-1.5 h-3.5 w-3.5" /> Удалить историю
                 </Button>
@@ -380,18 +326,19 @@ export function SalesHistory() {
                 <AlertDialogHeader>
                   <AlertDialogTitle>Вы уверены?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    Это действие необратимо. Вся история продаж ({orders.length} записей) будет удалена навсегда.
+                    Это действие необратимо. Вся история продаж ({orders.length} записей) будет удалена навсегда из Google Sheets.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel onClick={cancelClearAllOrders} className="text-xs px-3 h-9">
+                  <AlertDialogCancel onClick={cancelClearAllOrders} className="text-xs px-3 h-9" disabled={isLoading}>
                     Отмена
                   </AlertDialogCancel>
                   <AlertDialogAction 
                     onClick={confirmClearAllOrders} 
                     className={buttonVariants({ variant: "destructive", size:"sm", className:"text-xs px-3 h-9" })}
+                    disabled={isLoading}
                   >
-                    Очистить историю
+                    {isLoading ? "Удаление..." : "Очистить историю"}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
@@ -399,7 +346,10 @@ export function SalesHistory() {
           </div>
         </div>
 
-        {/* Таблица продаж */}
+        {errorLoading && !isLoading && (
+            <p className="text-destructive text-center py-4">Ошибка загрузки: {errorLoading}</p>
+        )}
+
         <ScrollArea className="h-[400px] md:h-[500px] w-full border rounded-md">
           <Table>
             <TableHeader className="sticky top-0 bg-background shadow-sm z-10">
@@ -414,6 +364,14 @@ export function SalesHistory() {
                 </TableHead>
                 <TableHead className="text-xs md:text-sm px-2 md:px-4 whitespace-nowrap">
                   Товары
+                </TableHead>
+                <TableHead 
+                  className="w-[120px] md:w-[150px] text-xs md:text-sm px-2 md:px-4 cursor-pointer hover:bg-muted/50 whitespace-nowrap" 
+                  onClick={() => requestSort('employee')}
+                >
+                  <div className="flex items-center">
+                    Сотрудник <SortIcon sortKey="employee" currentSortConfig={sortConfig} />
+                  </div>
                 </TableHead>
                 <TableHead 
                   className="w-[90px] md:w-[110px] text-xs md:text-sm px-2 md:px-4 cursor-pointer hover:bg-muted/50 whitespace-nowrap" 
@@ -435,9 +393,21 @@ export function SalesHistory() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredAndSortedOrders.length === 0 ? (
+             {isLoading && filteredAndSortedOrders.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground py-6 md:py-8 text-sm">
+                  <TableCell colSpan={6} className="text-center text-muted-foreground py-6 md:py-8 text-sm">
+                    Загрузка истории...
+                  </TableCell>
+                </TableRow>
+              ) : !isLoading && errorLoading ? (
+                 <TableRow>
+                  <TableCell colSpan={6} className="text-center text-destructive py-6 md:py-8 text-sm">
+                    Ошибка загрузки истории. Попробуйте обновить.
+                  </TableCell>
+                </TableRow>
+              ) : filteredAndSortedOrders.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center text-muted-foreground py-6 md:py-8 text-sm">
                     {orders.length === 0 ? "История продаж пуста." : "Нет заказов за выбранный период."}
                   </TableCell>
                 </TableRow>
@@ -464,6 +434,9 @@ export function SalesHistory() {
                       </div>
                     </TableCell>
                     <TableCell className="text-xs md:text-sm px-2 md:px-4 py-2 md:py-3 align-top whitespace-nowrap">
+                      {order.employee || 'Н/У'}
+                    </TableCell>
+                    <TableCell className="text-xs md:text-sm px-2 md:px-4 py-2 md:py-3 align-top whitespace-nowrap">
                       <div className="flex items-center gap-1 md:gap-1.5">
                         <PaymentMethodIcon method={order.paymentMethod} />
                         <span className="hidden md:inline">{order.paymentMethod || 'Н/У'}</span>
@@ -483,6 +456,7 @@ export function SalesHistory() {
                             size="icon" 
                             className="h-7 w-7 md:h-8 md:w-8 text-destructive hover:text-destructive hover:bg-destructive/10" 
                             onClick={() => initiateDeleteOrder(order)}
+                            disabled={isLoading}
                           >
                             <Trash2 className="h-3.5 w-3.5 md:h-4 md:w-4" />
                             <span className="sr-only">Удалить заказ {order.id}</span>
@@ -497,14 +471,15 @@ export function SalesHistory() {
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
-                              <AlertDialogCancel onClick={cancelDeleteOrder} className="text-xs px-3 h-9">
+                              <AlertDialogCancel onClick={cancelDeleteOrder} className="text-xs px-3 h-9" disabled={isLoading}>
                                 Отмена
                               </AlertDialogCancel>
                               <AlertDialogAction 
                                 onClick={confirmDeleteOrder} 
                                 className={buttonVariants({ variant: "destructive", size:"sm", className:"text-xs px-3 h-9" })}
+                                disabled={isLoading}
                               >
-                                Удалить
+                                {isLoading ? "Удаление..." : "Удалить"}
                               </AlertDialogAction>
                             </AlertDialogFooter>
                           </AlertDialogContent>
@@ -522,3 +497,4 @@ export function SalesHistory() {
     </Card>
   );
 }
+

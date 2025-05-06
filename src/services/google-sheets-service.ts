@@ -1,14 +1,17 @@
+
 'use server';
 /**
  * @fileoverview Service for interacting with the Google Sheets API using Service Account authentication.
  * Provides functions to fetch, add, update, and delete product data,
  * assuming a sheet structure: Name | Volume | Price | Image URL | Hint
  * Also provides functions for user authentication and data retrieval/update.
+ * And functions for sales history management.
  */
 import { google } from 'googleapis';
 import { GoogleAuth } from 'google-auth-library';
 import type { Product } from '@/types/product';
 import type { User } from '@/types/user';
+import type { Order, SalesHistoryItem, PaymentMethod } from '@/types/order';
 import { getRawProductData } from '@/lib/product-defaults';
 
 // --- Service Account Authentication ---
@@ -18,6 +21,7 @@ const {
   GOOGLE_SHEET_ID: SHEET_ID,
   GOOGLE_SHEET_NAME: PRODUCT_SHEET_NAME_ONLY,
   GOOGLE_USERS_SHEET_NAME: USERS_SHEET_NAME_ONLY,
+  GOOGLE_HISTORY_SHEET_NAME: HISTORY_SHEET_NAME_ONLY,
 } = process.env;
 
 const PRIVATE_KEY = GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n');
@@ -40,13 +44,21 @@ const USER_HEADER_ROW_COUNT = 1;
 const USER_DATA_START_ROW = USER_HEADER_ROW_COUNT + 1;
 const USER_DATA_RANGE = `${USERS_SHEET_NAME_ONLY}!A${USER_DATA_START_ROW}:H`;
 
+// Column mapping for history sheet
+const HISTORY_COLUMN_MAP = { orderId: 0, timestamp: 1, items: 2, paymentMethod: 3, totalPrice: 4, employee: 5 };
+const HISTORY_HEADER_ROW_COUNT = 1;
+const HISTORY_DATA_START_ROW = HISTORY_HEADER_ROW_COUNT + 1;
+const HISTORY_DATA_RANGE = `${HISTORY_SHEET_NAME_ONLY}!A${HISTORY_DATA_START_ROW}:F`;
+const HISTORY_FULL_RANGE_FOR_APPEND = `${HISTORY_SHEET_NAME_ONLY}!A:F`;
+
+
 // Cache for sheet GIDs to avoid repeated lookups
 const sheetGidCache = {};
 
 // Initialize Google Sheets client
 const initializeSheetsClient = () => {
   try {
-    if (!SHEET_ID || !PRODUCT_SHEET_NAME_ONLY || !USERS_SHEET_NAME_ONLY) {
+    if (!SHEET_ID || !PRODUCT_SHEET_NAME_ONLY || !USERS_SHEET_NAME_ONLY || !HISTORY_SHEET_NAME_ONLY) {
       throw new Error("Missing Google Sheet configuration in environment variables.");
     }
 
@@ -145,16 +157,83 @@ const rowToUser = (row) => {
   };
 };
 
+// Helper to convert sheet row to Order object
+const rowToOrder = (row): Order | null => {
+  if (!row || row.length === 0 || !row[HISTORY_COLUMN_MAP.orderId] || !row[HISTORY_COLUMN_MAP.timestamp]) {
+    return null;
+  }
+
+  let items: SalesHistoryItem[] = [];
+  try {
+    // Items are stored as a JSON string: "Name1 (Volume1) xQty1, Name2 xQty2"
+    // This needs careful parsing. A better way would be to store as JSON stringified array.
+    // For now, assuming a simpler string format or direct JSON.
+    // Example simple parse (assumes "Name (Vol) xQty, ..."):
+    const itemsString = row[HISTORY_COLUMN_MAP.items] ?? '';
+    if (itemsString.startsWith('[')) { // Check if it's a JSON array string
+        items = JSON.parse(itemsString);
+    } else { // Fallback for simple string format, less robust
+        items = itemsString.split(',').map(itemStr => {
+            const parts = itemStr.trim().match(/(.+?)(?:\s*\((.+?)\))?\s*x(\d+)/);
+            if (parts) {
+                return {
+                    id: `item_${Date.now()}_${Math.random()}`, // Placeholder ID
+                    name: parts[1].trim(),
+                    volume: parts[2]?.trim(),
+                    price: 0, // Price per item not stored in this simplified string, might need adjustment
+                    quantity: parseInt(parts[3], 10),
+                };
+            }
+            return null;
+        }).filter(Boolean) as SalesHistoryItem[];
+    }
+  } catch (e) {
+    console.warn(`[GSHEET History] Could not parse items for order ${row[HISTORY_COLUMN_MAP.orderId]}: ${row[HISTORY_COLUMN_MAP.items]}`, e);
+  }
+
+  const totalPriceStr = row[HISTORY_COLUMN_MAP.totalPrice]?.toString().replace(',', '.').trim();
+  const isValidTotalPrice = /^\d+(\.\d+)?$/.test(totalPriceStr);
+
+  return {
+    id: row[HISTORY_COLUMN_MAP.orderId],
+    timestamp: row[HISTORY_COLUMN_MAP.timestamp], // Assuming ISO string
+    items,
+    paymentMethod: row[HISTORY_COLUMN_MAP.paymentMethod] as PaymentMethod,
+    totalPrice: isValidTotalPrice ? parseFloat(totalPriceStr) : 0,
+    employee: row[HISTORY_COLUMN_MAP.employee] || undefined,
+  };
+};
+
+
 // Helper to convert Product object to sheet row
 const productToRow = (product) => {
   const row = Array(Object.keys(PRODUCT_COLUMN_MAP).length).fill('');
   row[PRODUCT_COLUMN_MAP.name] = product.name;
   row[PRODUCT_COLUMN_MAP.volume] = product.volume ?? '';
-  row[PRODUCT_COLUMN_MAP.price] = product.price !== undefined ? product.price : '';
+  row[PRODUCT_COLUMN_MAP.price] = product.price !== undefined ? String(product.price).replace('.', ',') : '';
   row[PRODUCT_COLUMN_MAP.imageUrl] = product.imageUrl ?? '';
   row[PRODUCT_COLUMN_MAP.dataAiHint] = product.dataAiHint ?? '';
   return row;
 };
+
+// Helper to convert Order object to sheet row
+const orderToRow = (order: Order): string[] => {
+  const row = Array(Object.keys(HISTORY_COLUMN_MAP).length).fill('');
+  row[HISTORY_COLUMN_MAP.orderId] = order.id;
+  row[HISTORY_COLUMN_MAP.timestamp] = order.timestamp;
+  // Store items as a JSON string for easier parsing later
+  row[HISTORY_COLUMN_MAP.items] = JSON.stringify(order.items.map(item => ({
+      name: item.name,
+      volume: item.volume,
+      quantity: item.quantity,
+      price: item.price // Include price per item if available
+  })));
+  row[HISTORY_COLUMN_MAP.paymentMethod] = order.paymentMethod;
+  row[HISTORY_COLUMN_MAP.totalPrice] = String(order.totalPrice).replace('.', ',');
+  row[HISTORY_COLUMN_MAP.employee] = order.employee ?? '';
+  return row;
+};
+
 
 // Helper function to get the sheetId (gid) for a given sheet name
 const getSheetGid = async (sheetName) => {
@@ -195,7 +274,8 @@ const findRowIndexByColumnValue = async (sheetNameOnly, columnIndex, valueToFind
 
   const columnLetter = String.fromCharCode('A'.charCodeAt(0) + columnIndex);
   const range = `${sheetNameOnly}!${columnLetter}${startRow}:${columnLetter}`;
-  const logPrefix = sheetNameOnly === PRODUCT_SHEET_NAME_ONLY ? '[GSHEET Product]' : '[GSHEET User]';
+  const logPrefix = sheetNameOnly === PRODUCT_SHEET_NAME_ONLY ? '[GSHEET Product]' : 
+                    sheetNameOnly === USERS_SHEET_NAME_ONLY ? '[GSHEET User]' : '[GSHEET History]';
 
   try {
     console.log(`${logPrefix} Searching for "${valueToFind}" in column ${columnLetter}`);
@@ -263,10 +343,10 @@ const findProductRowIndexByNameAndVolume = async (name, volume) => {
   }
 };
 
-// --- Public API ---
+// --- Product API ---
 
 // Fetch products from sheet
-export const fetchProductsFromSheet = async () => {
+export const fetchProductsFromSheet = async (): Promise<Product[]> => {
   const currentSheets = getSheetsClient();
   if (!currentSheets) {
     throw new Error(`Google Sheets client not initialized. Auth error: ${authError}`);
@@ -288,7 +368,7 @@ export const fetchProductsFromSheet = async () => {
     console.log(`[GSHEET Product] Fetched ${rows.length} rows.`);
     return rows
       .map((row, index) => rowToProduct(row, index))
-      .filter(Boolean);
+      .filter(Boolean) as Product[]; // Type assertion
   } catch (error) {
     console.error('[GSHEET Product] Error fetching products:', error?.message || error);
     throw new Error('Failed to fetch products. Check permissions and config.');
@@ -296,7 +376,7 @@ export const fetchProductsFromSheet = async () => {
 };
 
 // Add product to sheet
-export const addProductToSheet = async (product) => {
+export const addProductToSheet = async (product: Omit<Product, 'id'>): Promise<boolean> => {
   const currentSheets = getSheetsClient();
   if (!currentSheets) return false;
 
@@ -314,8 +394,8 @@ export const addProductToSheet = async (product) => {
     console.log(`[GSHEET Product] Adding product: "${product.name}", "${product.volume || ''}"`);
     const existingRowIndex = await findProductRowIndexByNameAndVolume(product.name, product.volume);
     if (existingRowIndex !== null) {
-      console.warn(`[GSHEET Product] Product already exists. Skipping.`);
-      return false;
+      console.warn(`[GSHEET Product] Product "${product.name}" (${product.volume || 'N/A'}) already exists. Skipping.`);
+      return false; // Indicate product already exists or skip
     }
 
     await currentSheets.spreadsheets.values.append({
@@ -337,7 +417,7 @@ export const addProductToSheet = async (product) => {
 };
 
 // Update product in sheet
-export const updateProductInSheet = async ({ originalName, originalVolume, newData }) => {
+export const updateProductInSheet = async ({ originalName, originalVolume, newData }: { originalName: string, originalVolume?: string, newData: Omit<Product, 'id'> }): Promise<boolean> => {
   const currentSheets = getSheetsClient();
   if (!currentSheets) return false;
 
@@ -363,7 +443,7 @@ export const updateProductInSheet = async ({ originalName, originalVolume, newDa
     if (newData.name !== originalName || (newData.volume ?? '') !== (originalVolume ?? '')) {
       const potentialConflictIndex = await findProductRowIndexByNameAndVolume(newData.name, newData.volume);
       if (potentialConflictIndex !== null && potentialConflictIndex !== rowIndex) {
-        console.warn(`[GSHEET Product] Update conflict: Product exists at row ${potentialConflictIndex}.`);
+        console.warn(`[GSHEET Product] Update conflict: Product with new name/volume already exists at row ${potentialConflictIndex}.`);
         return false;
       }
     }
@@ -387,7 +467,7 @@ export const updateProductInSheet = async ({ originalName, originalVolume, newDa
 };
 
 // Delete product from sheet
-export const deleteProductFromSheet = async ({ name, volume }) => {
+export const deleteProductFromSheet = async ({ name, volume }: { name: string, volume?: string }): Promise<boolean> => {
   const currentSheets = getSheetsClient();
   if (!currentSheets) return false;
 
@@ -411,7 +491,7 @@ export const deleteProductFromSheet = async ({ name, volume }) => {
 
     const sheetGid = await getSheetGid(PRODUCT_SHEET_NAME_ONLY);
     if (sheetGid === null) {
-      console.error(`[GSHEET Product] Could not determine sheetId. Aborting.`);
+      console.error(`[GSHEET Product] Could not determine sheetId for "${PRODUCT_SHEET_NAME_ONLY}". Aborting deletion.`);
       return false;
     }
 
@@ -423,7 +503,7 @@ export const deleteProductFromSheet = async ({ name, volume }) => {
             range: {
               sheetId: sheetGid,
               dimension: 'ROWS',
-              startIndex: rowIndex - 1,
+              startIndex: rowIndex - 1, // Google Sheets API is 0-indexed for batchUpdate ranges
               endIndex: rowIndex,
             },
           },
@@ -460,11 +540,11 @@ export const syncRawProductsToSheet = async () => {
     };
   }
 
-  console.log("[GSHEET Product] Starting sync...");
+  console.log("[GSHEET Product] Starting sync of raw products...");
 
   try {
     const rawProducts = getRawProductData();
-    console.log(`[GSHEET Product] Found ${rawProducts.length} raw products.`);
+    console.log(`[GSHEET Product] Found ${rawProducts.length} raw products for sync.`);
 
     const existingProducts = await fetchProductsFromSheet();
     const existingProductKeys = new Set(
@@ -476,7 +556,7 @@ export const syncRawProductsToSheet = async () => {
     );
     const skippedCount = rawProducts.length - productsToAdd.length;
 
-    console.log(`[GSHEET Product] To add: ${productsToAdd.length}, Skipped: ${skippedCount}`);
+    console.log(`[GSHEET Product] Products to add: ${productsToAdd.length}, Skipped (already exist): ${skippedCount}`);
 
     if (productsToAdd.length === 0) {
       return { 
@@ -489,9 +569,9 @@ export const syncRawProductsToSheet = async () => {
 
     await currentSheets.spreadsheets.values.append({
       spreadsheetId: SHEET_ID,
-      range: PRODUCT_FULL_RANGE_FOR_APPEND,
-      valueInputOption: 'USER_ENTERED',
-      insertDataOption: 'INSERT_ROWS',
+      range: PRODUCT_FULL_RANGE_FOR_APPEND, // Append to the end of the sheet
+      valueInputOption: 'USER_ENTERED', // So formulas and number formatting work
+      insertDataOption: 'INSERT_ROWS', // Insert new rows for the data
       requestBody: {
         values: productsToAdd.map(productToRow),
       },
@@ -499,15 +579,15 @@ export const syncRawProductsToSheet = async () => {
 
     return { 
       success: true, 
-      message: `Added ${productsToAdd.length} example products.`, 
+      message: `Successfully added ${productsToAdd.length} example products to Google Sheet.`, 
       addedCount: productsToAdd.length, 
       skippedCount 
     };
   } catch (error) {
-    console.error('[GSHEET Product] Error syncing products:', error?.message || error);
+    console.error('[GSHEET Product] Error syncing raw products:', error?.message || error);
     return { 
       success: false, 
-      message: `Failed to sync. ${error?.message || 'Unknown error'}`, 
+      message: `Failed to sync example products to Google Sheet. ${error?.message || 'Unknown error'}`, 
       addedCount: 0, 
       skippedCount: 0 
     };
@@ -517,7 +597,7 @@ export const syncRawProductsToSheet = async () => {
 // --- User Authentication Functions ---
 
 // Get user data from sheet
-export const getUserDataFromSheet = async (login) => {
+export const getUserDataFromSheet = async (login: string): Promise<User | null> => {
   const currentSheets = getSheetsClient();
   if (!currentSheets) return null;
 
@@ -530,27 +610,27 @@ export const getUserDataFromSheet = async (login) => {
 
     const rows = response.data.values;
     if (!rows) {
-      console.log(`[GSHEET User] No users found.`);
+      console.log(`[GSHEET User] No users found in sheet "${USERS_SHEET_NAME_ONLY}".`);
       return null;
     }
 
     const userRow = rows.find(row => row[USER_COLUMN_MAP.login] === login);
     if (!userRow) {
-      console.log(`[GSHEET User] User not found.`);
+      console.log(`[GSHEET User] User "${login}" not found.`);
       return null;
     }
 
     return rowToUser(userRow);
   } catch (error) {
-    console.error(`[GSHEET User] Error fetching user:`, error?.message || error);
+    console.error(`[GSHEET User] Error fetching user "${login}":`, error?.message || error);
     return null;
   }
 };
 
 // Verify password
 export const verifyPassword = async (inputPassword, storedHash) => {
-  // TODO: Replace with actual hashing comparison
-  console.warn("[Security] Comparing passwords in plain text. Replace with hashing!");
+  // TODO: Replace with actual hashing comparison (e.g., bcrypt.compare)
+  console.warn("[Security] Comparing passwords in plain text. IMPLEMENT HASHING!");
   return inputPassword === storedHash;
 };
 
@@ -565,7 +645,7 @@ const findUserRowIndexByLogin = async (login) => {
 };
 
 // Update user in sheet
-export const updateUserInSheet = async (originalLogin, updates) => {
+export const updateUserInSheet = async (originalLogin: string, updates: Partial<User>): Promise<boolean> => {
   const currentSheets = getSheetsClient();
   if (!currentSheets) return false;
 
@@ -575,19 +655,19 @@ export const updateUserInSheet = async (originalLogin, updates) => {
   }
   
   if (!originalLogin) {
-    console.error('[GSHEET User] Original login missing.');
+    console.error('[GSHEET User] Original login missing for update.');
     return false;
   }
 
   try {
-    console.log(`[GSHEET User] Updating user: "${originalLogin}"`);
+    console.log(`[GSHEET User] Updating user: "${originalLogin}" with updates:`, updates);
     const rowIndex = await findUserRowIndexByLogin(originalLogin);
     if (rowIndex === null) {
-      console.error(`[GSHEET User] User not found.`);
+      console.error(`[GSHEET User] User "${originalLogin}" not found for update.`);
       return false;
     }
 
-    const userRowRange = `${USERS_SHEET_NAME_ONLY}!A${rowIndex}:H${rowIndex}`;
+    const userRowRange = `${USERS_SHEET_NAME_ONLY}!A${rowIndex}:${String.fromCharCode('A'.charCodeAt(0) + Object.keys(USER_COLUMN_MAP).length - 1)}${rowIndex}`;
     const currentUserDataRowResponse = await currentSheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
       range: userRowRange,
@@ -595,17 +675,17 @@ export const updateUserInSheet = async (originalLogin, updates) => {
     
     const currentUserDataRow = currentUserDataRowResponse.data.values?.[0];
     if (!currentUserDataRow) {
-      console.error(`[GSHEET User] Could not fetch current data.`);
+      console.error(`[GSHEET User] Could not fetch current data for user "${originalLogin}".`);
       return false;
     }
 
-    // Create updated row
-    const updatedRow = Array(Object.keys(USER_COLUMN_MAP).length).fill(null);
-    currentUserDataRow.forEach((value, index) => {
-      if (index < updatedRow.length) updatedRow[index] = value ?? '';
-    });
-
-    // Apply updates
+    // Create updated row based on current data, then apply updates
+    const updatedRow = [...currentUserDataRow];
+    // Ensure row has enough columns
+    while (updatedRow.length < Object.keys(USER_COLUMN_MAP).length) {
+      updatedRow.push('');
+    }
+    
     if (updates.login !== undefined) updatedRow[USER_COLUMN_MAP.login] = updates.login;
     if (updates.passwordHash !== undefined) updatedRow[USER_COLUMN_MAP.passwordHash] = updates.passwordHash;
     if (updates.firstName !== undefined) updatedRow[USER_COLUMN_MAP.firstName] = updates.firstName || '';
@@ -614,12 +694,12 @@ export const updateUserInSheet = async (originalLogin, updates) => {
     if (updates.position !== undefined) updatedRow[USER_COLUMN_MAP.position] = updates.position || '';
     if (updates.iconColor !== undefined) updatedRow[USER_COLUMN_MAP.iconColor] = updates.iconColor || '';
 
-    // Check login conflict
+    // Check login conflict if login is being changed
     if (updates.login && updates.login !== originalLogin) {
       const newLoginIndex = await findUserRowIndexByLogin(updates.login);
-      if (newLoginIndex !== null && newLoginIndex !== rowIndex) {
-        console.warn(`[GSHEET User] Update conflict: Login exists for another user.`);
-        return false;
+      if (newLoginIndex !== null && newLoginIndex !== rowIndex) { // Check if new login exists AND it's not the current user's row
+        console.warn(`[GSHEET User] Update conflict: New login "${updates.login}" already exists for another user.`);
+        return false; // Or throw an error to indicate conflict
       }
     }
 
@@ -632,10 +712,188 @@ export const updateUserInSheet = async (originalLogin, updates) => {
       },
     });
 
-    console.log(`[GSHEET User] Successfully updated user.`);
+    console.log(`[GSHEET User] Successfully updated user "${originalLogin}". New login (if changed): "${updates.login || originalLogin}".`);
     return true;
   } catch (error) {
-    console.error(`[GSHEET User] Error updating user:`, error?.message || error);
+    console.error(`[GSHEET User] Error updating user "${originalLogin}":`, error?.message || error);
     return false;
   }
 };
+
+
+// --- Sales History Functions ---
+
+// Fetch all orders from history sheet
+export const fetchOrdersFromSheet = async (): Promise<Order[]> => {
+  const currentSheets = getSheetsClient();
+  if (!currentSheets) {
+    throw new Error(`Google Sheets client not initialized. Auth error: ${authError}`);
+  }
+
+  try {
+    console.log(`[GSHEET History] Fetching orders from range: ${HISTORY_DATA_RANGE}`);
+    const response = await currentSheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: HISTORY_DATA_RANGE,
+    });
+
+    const rows = response.data.values;
+    if (!rows) {
+      console.log("[GSHEET History] No data found.");
+      return [];
+    }
+
+    console.log(`[GSHEET History] Fetched ${rows.length} rows.`);
+    return rows.map(rowToOrder).filter(Boolean) as Order[];
+  } catch (error) {
+    console.error('[GSHEET History] Error fetching orders:', error?.message || error);
+    throw new Error('Failed to fetch orders. Check permissions and config.');
+  }
+};
+
+// Add an order to history sheet
+export const addOrderToSheet = async (order: Order): Promise<boolean> => {
+  const currentSheets = getSheetsClient();
+  if (!currentSheets) return false;
+
+  if (!(SERVICE_ACCOUNT_EMAIL && PRIVATE_KEY)) {
+    console.error('[GSHEET History] Add operation requires Service Account credentials.');
+    return false;
+  }
+  
+  if (!order.id) {
+    console.error('[GSHEET History] Attempted to add order without an ID.');
+    return false;
+  }
+
+  try {
+    console.log(`[GSHEET History] Adding order: "${order.id}"`);
+    // Optional: Check if order ID already exists to prevent duplicates, if needed
+    // const existingRowIndex = await findRowIndexByColumnValue(HISTORY_SHEET_NAME_ONLY, HISTORY_COLUMN_MAP.orderId, order.id, HISTORY_DATA_START_ROW);
+    // if (existingRowIndex !== null) {
+    //   console.warn(`[GSHEET History] Order with ID "${order.id}" already exists. Skipping.`);
+    //   return false;
+    // }
+
+    await currentSheets.spreadsheets.values.append({
+      spreadsheetId: SHEET_ID,
+      range: HISTORY_FULL_RANGE_FOR_APPEND,
+      valueInputOption: 'USER_ENTERED',
+      insertDataOption: 'INSERT_ROWS',
+      requestBody: {
+        values: [orderToRow(order)],
+      },
+    });
+    
+    console.log(`[GSHEET History] Successfully added order "${order.id}".`);
+    return true;
+  } catch (error) {
+    console.error(`[GSHEET History] Error adding order "${order.id}":`, error?.message || error);
+    return false;
+  }
+};
+
+// Delete an order from history sheet by ID
+export const deleteOrderFromSheet = async (orderId: string): Promise<boolean> => {
+  const currentSheets = getSheetsClient();
+  if (!currentSheets) return false;
+
+  if (!(SERVICE_ACCOUNT_EMAIL && PRIVATE_KEY)) {
+    console.error('[GSHEET History] Delete operation requires Service Account credentials.');
+    return false;
+  }
+  
+  if (!orderId) {
+    console.error('[GSHEET History] Attempted to delete order without an ID.');
+    return false;
+  }
+
+  try {
+    console.log(`[GSHEET History] Deleting order: "${orderId}"`);
+    const rowIndex = await findRowIndexByColumnValue(HISTORY_SHEET_NAME_ONLY, HISTORY_COLUMN_MAP.orderId, orderId, HISTORY_DATA_START_ROW);
+    if (rowIndex === null) {
+      console.error(`[GSHEET History] Order with ID "${orderId}" not found for deletion.`);
+      return false;
+    }
+
+    const sheetGid = await getSheetGid(HISTORY_SHEET_NAME_ONLY);
+    if (sheetGid === null) {
+      console.error(`[GSHEET History] Could not determine sheetId for "${HISTORY_SHEET_NAME_ONLY}". Aborting deletion.`);
+      return false;
+    }
+
+    await currentSheets.spreadsheets.batchUpdate({
+      spreadsheetId: SHEET_ID,
+      requestBody: {
+        requests: [{
+          deleteDimension: {
+            range: {
+              sheetId: sheetGid,
+              dimension: 'ROWS',
+              startIndex: rowIndex - 1, 
+              endIndex: rowIndex,
+            },
+          },
+        }],
+      },
+    });
+    
+    console.log(`[GSHEET History] Successfully deleted order "${orderId}".`);
+    return true;
+  } catch (error) {
+    console.error(`[GSHEET History] Error deleting order "${orderId}":`, error?.message || error);
+    return false;
+  }
+};
+
+// Clear all orders from history sheet (leaves header row)
+export const clearAllOrdersFromSheet = async (): Promise<boolean> => {
+  const currentSheets = getSheetsClient();
+  if (!currentSheets) return false;
+
+  if (!(SERVICE_ACCOUNT_EMAIL && PRIVATE_KEY)) {
+    console.error('[GSHEET History] Clear all operation requires Service Account credentials.');
+    return false;
+  }
+
+  try {
+    console.log(`[GSHEET History] Clearing all orders from sheet "${HISTORY_SHEET_NAME_ONLY}".`);
+    
+    const sheetGid = await getSheetGid(HISTORY_SHEET_NAME_ONLY);
+    if (sheetGid === null) {
+      console.error(`[GSHEET History] Could not determine sheetId for "${HISTORY_SHEET_NAME_ONLY}". Aborting clear operation.`);
+      return false;
+    }
+    
+    // Get the total number of rows in the sheet to determine the range to clear
+    // This is safer than just clearing a large fixed range if the sheet might have other data below
+    const sheetMetadata = await currentSheets.spreadsheets.get({
+        spreadsheetId: SHEET_ID,
+        ranges: [HISTORY_SHEET_NAME_ONLY],
+        fields: 'sheets(properties(gridProperties(rowCount)))',
+    });
+
+    const currentSheetInfo = sheetMetadata.data.sheets?.find(s => s.properties?.title === HISTORY_SHEET_NAME_ONLY);
+    const totalRows = currentSheetInfo?.properties?.gridProperties?.rowCount;
+
+    if (!totalRows || totalRows <= HISTORY_HEADER_ROW_COUNT) {
+        console.log('[GSHEET History] No data rows to clear.');
+        return true;
+    }
+
+    // Clear rows from data start row to the end of the sheet
+    const rangeToClear = `${HISTORY_SHEET_NAME_ONLY}!A${HISTORY_DATA_START_ROW}:F${totalRows}`;
+    
+    await currentSheets.spreadsheets.values.clear({
+      spreadsheetId: SHEET_ID,
+      range: rangeToClear,
+    });
+    
+    console.log(`[GSHEET History] Successfully cleared all orders from sheet "${HISTORY_SHEET_NAME_ONLY}".`);
+    return true;
+  } catch (error) {
+    console.error(`[GSHEET History] Error clearing all orders:`, error?.message || error);
+    return false;
+  }
+};
+

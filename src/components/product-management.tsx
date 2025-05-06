@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
@@ -47,13 +48,14 @@ import {
 import { ProductListItem } from './product-list-item';
 import { cn } from "@/lib/utils";
 import type { Order } from "@/types/order";
-import { LOCAL_STORAGE_ORDERS_KEY, LOCAL_STORAGE_PRODUCT_MGMT_SORT_KEY } from '@/lib/constants';
+import { LOCAL_STORAGE_PRODUCT_MGMT_SORT_KEY } from '@/lib/constants';
 import {
   fetchProductsFromSheet,
   addProductToSheet,
   updateProductInSheet,
   deleteProductFromSheet,
-  syncRawProductsToSheet
+  syncRawProductsToSheet,
+  fetchOrdersFromSheet as fetchAllOrdersForPopularity // Import for popularity
 } from '@/services/google-sheets-service';
 import { useDebounce } from '@/hooks/use-debounce';
 
@@ -73,27 +75,25 @@ const productSchema = z.object({
 type ProductFormData = z.infer<typeof productSchema>;
 type SortOption = 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc' | 'popularity-desc';
 
-// Функция для расчета популярности товаров
-const calculatePopularity = (): Map<string, number> => {
+// Функция для расчета популярности товаров из Google Sheets
+const calculatePopularityFromSheet = async (): Promise<Map<string, number>> => {
   const popularityMap = new Map<string, number>();
   try {
-    const storedOrders = localStorage.getItem(LOCAL_STORAGE_ORDERS_KEY);
-    if (storedOrders) {
-      const pastOrders: Order[] = JSON.parse(storedOrders);
-      if (Array.isArray(pastOrders)) {
-        pastOrders.forEach(ord => {
-          ord.items.forEach(item => {
-            const key = `${item.name}|${item.volume ?? ''}`;
-            popularityMap.set(key, (popularityMap.get(key) || 0) + item.quantity);
-          });
+    const pastOrders: Order[] = await fetchAllOrdersForPopularity(); // Fetch orders from Google Sheets
+    if (Array.isArray(pastOrders)) {
+      pastOrders.forEach(ord => {
+        ord.items.forEach(item => {
+          const key = `${item.name}|${item.volume ?? ''}`;
+          popularityMap.set(key, (popularityMap.get(key) || 0) + item.quantity);
         });
-      }
+      });
     }
   } catch (e) {
-    console.error("Error reading or parsing sales history for popularity:", e);
+    console.error("Error reading or parsing sales history from Google Sheets for popularity:", e);
   }
   return popularityMap;
 };
+
 
 // Сопоставление популярности с ID продукта
 const mapPopularityToProductId = (products: Product[], popularityMap: Map<string, number>): Map<string, number> => {
@@ -242,9 +242,9 @@ const ProductList = React.memo(({
           onStartEditing={onStartEditing}
           onCancelEditing={onCancelEditing}
           onEditSubmit={onEditSubmit}
-          onRemoveProduct={() => onRemoveProduct(product)}
+          onRemoveProduct={() => onRemoveProduct(product)} // Pass a function here
           popularityRank={topProductsRanking.get(product.id)}
-          isLoading={isLoading || isEditingLoading}
+          isLoading={isLoading || isEditingLoading} // Pass combined loading state
         />
       ))}
     </ul>
@@ -253,24 +253,23 @@ const ProductList = React.memo(({
 ProductList.displayName = 'ProductList';
 
 export function ProductManagement() {
-  // Состояния
   const [products, setProducts] = useState<Product[]>([]);
   const [searchTerm, setSearchTerm] = useState<string>("");
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const [sortOption, setSortOption] = useState<SortOption>('name-asc');
-  const [popularityVersion, setPopularityVersion] = useState<number>(0);
+  const [popularityVersion, setPopularityVersion] = useState<number>(0); // Used to trigger re-calc of popularity
   const [isClient, setIsClient] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isClearAllDialogOpen, setIsClearAllDialogOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true); // For initial load and refresh
+  const [isSubmitting, setIsSubmitting] = useState(false); // For add/edit/delete operations
   const [errorLoading, setErrorLoading] = useState<string | null>(null);
+
 
   const { toast } = useToast();
   
-  // Инициализация форм
   const form = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
     defaultValues: { name: "", volume: "", price: undefined, imageUrl: "", dataAiHint: "" },
@@ -281,7 +280,7 @@ export function ProductManagement() {
     defaultValues: { name: "", volume: "", price: undefined, imageUrl: "", dataAiHint: "" },
   });
 
-  // Загрузка продуктов
+
   const loadProducts = useCallback(async (showLoadingIndicator = true) => {
     if (showLoadingIndicator) setIsLoading(true);
     setErrorLoading(null);
@@ -304,11 +303,10 @@ export function ProductManagement() {
     }
   }, [toast]);
 
-  // Инициализация при монтировании компонента
+
   useEffect(() => {
     setIsClient(true);
     
-    // Загрузка опции сортировки
     try {
       const storedSortOption = localStorage.getItem(LOCAL_STORAGE_PRODUCT_MGMT_SORT_KEY);
       if (storedSortOption && ['name-asc', 'name-desc', 'price-asc', 'price-desc', 'popularity-desc'].includes(storedSortOption)) {
@@ -322,19 +320,11 @@ export function ProductManagement() {
     }
 
     loadProducts();
-
-    // Обработчик изменений в localStorage
-    const handleOrderStorageChange = (event: StorageEvent) => {
-      if (event.key === LOCAL_STORAGE_ORDERS_KEY) {
-        setPopularityVersion(v => v + 1);
-      }
-    };
-    
-    window.addEventListener('storage', handleOrderStorageChange);
-    return () => window.removeEventListener('storage', handleOrderStorageChange);
+    // When an order is placed (handled in OrderBuilder), it will update Google Sheets.
+    // To reflect popularity changes here, we might need a mechanism to refetch popularity,
+    // or simply rely on the popularityVersion state which can be updated after critical actions.
   }, [loadProducts]);
 
-  // Сохранение опции сортировки
   useEffect(() => {
     if (isClient) {
       try {
@@ -345,17 +335,25 @@ export function ProductManagement() {
     }
   }, [sortOption, isClient]);
 
-  // Расчет карты популярности
-  const popularityNameVolumeMap = useMemo(() => {
+  // Calculate popularity map using Google Sheets
+  const popularityNameVolumeMap = useMemo(async () => {
     if (!isClient) return new Map<string, number>();
-    return calculatePopularity();
-  }, [isClient, popularityVersion]);
+    console.log("ProductManagement: Recalculating popularity from sheet, version:", popularityVersion);
+    return await calculatePopularityFromSheet();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isClient, popularityVersion]); // Re-calculate when popularityVersion changes
 
-  // Расчет рейтинга топ-продуктов
+
+  const [resolvedPopularityMap, setResolvedPopularityMap] = useState<Map<string, number>>(new Map());
+  useEffect(() => {
+    popularityNameVolumeMap.then(map => setResolvedPopularityMap(map));
+  }, [popularityNameVolumeMap]);
+
+
   const topProductsRanking = useMemo(() => {
     if (!isClient) return new Map<string, number>();
     
-    const productIdPopularityMap = mapPopularityToProductId(products, popularityNameVolumeMap);
+    const productIdPopularityMap = mapPopularityToProductId(products, resolvedPopularityMap);
     const sortedByPopularity = Array.from(productIdPopularityMap.entries())
       .sort(([, countA], [, countB]) => countB - countA);
     
@@ -365,15 +363,13 @@ export function ProductManagement() {
     });
     
     return ranking;
-  }, [products, popularityNameVolumeMap, isClient]);
+  }, [products, resolvedPopularityMap, isClient]);
 
-  // Фильтрация и сортировка продуктов
   const filteredAndSortedProducts = useMemo(() => {
     if (!isClient) return [];
     
     let result = [...products];
 
-    // Фильтрация
     if (debouncedSearchTerm) {
       const lowerCaseSearchTerm = debouncedSearchTerm.toLowerCase();
       result = result.filter(product =>
@@ -382,7 +378,6 @@ export function ProductManagement() {
       );
     }
 
-    // Сортировка
     switch (sortOption) {
       case 'name-asc':
         result.sort((a, b) => a.name.localeCompare(b.name));
@@ -397,7 +392,7 @@ export function ProductManagement() {
         result.sort((a, b) => (b.price ?? -Infinity) - (a.price ?? -Infinity));
         break;
       case 'popularity-desc': {
-        const productIdPopularityMap = mapPopularityToProductId(products, popularityNameVolumeMap);
+        const productIdPopularityMap = mapPopularityToProductId(products, resolvedPopularityMap);
         result.sort((a, b) => {
           const popDiff = (productIdPopularityMap.get(b.id) || 0) - (productIdPopularityMap.get(a.id) || 0);
           return popDiff !== 0 ? popDiff : a.name.localeCompare(b.name);
@@ -407,14 +402,13 @@ export function ProductManagement() {
     }
     
     return result;
-  }, [products, debouncedSearchTerm, sortOption, isClient, popularityNameVolumeMap]);
+  }, [products, debouncedSearchTerm, sortOption, isClient, resolvedPopularityMap]);
 
-  // Обработчики событий
+
   const handleSetSortOption = useCallback((newSortOption: SortOption) => {
     setSortOption(newSortOption);
   }, []);
 
-  // Добавление нового продукта
   const onSubmit = useCallback(async (data: ProductFormData) => {
     setIsSubmitting(true);
 
@@ -439,7 +433,8 @@ export function ProductManagement() {
     const success = await addProductToSheet(productDataForSheet);
 
     if (success) {
-      await loadProducts(false);
+      await loadProducts(false); // Reload without global loading indicator
+      setPopularityVersion(v => v + 1); // Update popularity version
       toast({ 
         title: "Товар добавлен", 
         description: `${data.name} ${data.volume || ''} успешно добавлен.` 
@@ -456,14 +451,13 @@ export function ProductManagement() {
     setIsSubmitting(false);
   }, [toast, form, loadProducts]);
 
-  // Инициализация удаления продукта
+
   const initiateDeleteProduct = useCallback((product: Product) => {
     if (isLoading || isSubmitting) return;
     setProductToDelete(product);
     setIsDeleteDialogOpen(true);
   }, [isLoading, isSubmitting]);
 
-  // Подтверждение удаления продукта
   const confirmRemoveProduct = useCallback(async () => {
     if (!productToDelete || isSubmitting) return;
 
@@ -473,16 +467,12 @@ export function ProductManagement() {
     setIsSubmitting(true);
     setIsDeleteDialogOpen(false);
 
-    // Оптимистичное обновление UI
-    setProducts((prev) => prev.filter((p) => p.id !== localIdToDelete));
-    if (editingProductId === localIdToDelete) {
-      setEditingProductId(null);
-    }
-
     const success = await deleteProductFromSheet(productIdentifier);
     setProductToDelete(null);
 
     if (success) {
+      await loadProducts(false); // Reload
+      setPopularityVersion(v => v + 1); // Update popularity
       toast({ 
         title: "Товар удален", 
         description: `Товар "${productIdentifier.name}" был удален.`, 
@@ -491,65 +481,65 @@ export function ProductManagement() {
     } else {
       toast({ 
         title: "Ошибка удаления", 
-        description: `Не удалось удалить товар "${productIdentifier.name}". Восстановление...`, 
+        description: `Не удалось удалить товар "${productIdentifier.name}".`, 
         variant: "destructive" 
       });
-      await loadProducts(false);
+      // No need to manually restore if loadProducts is called, as it fetches fresh data
     }
     
     setIsSubmitting(false);
-  }, [toast, productToDelete, editingProductId, loadProducts, isSubmitting]);
+  }, [toast, productToDelete, loadProducts, isSubmitting]);
 
-  // Отмена удаления продукта
+
   const cancelRemoveProduct = useCallback(() => {
     setIsDeleteDialogOpen(false);
     setProductToDelete(null);
   }, []);
 
-  // Удаление всех продуктов
+
   const clearAllProducts = useCallback(async () => {
     if (products.length === 0 || isLoading || isSubmitting) return;
 
     setIsClearAllDialogOpen(false);
-    setIsLoading(true);
-    const originalProducts = [...products];
-
-    setProducts([]);
+    setIsSubmitting(true); // Use isSubmitting for this operation as well
 
     let allDeleted = true;
-    const failedDeletions: Product[] = [];
-
-    for (const product of originalProducts) {
+    // It's better to delete one by one if the backend doesn't support bulk delete
+    // or to avoid potential issues with large batch operations.
+    // For simplicity, we'll assume `deleteProductFromSheet` handles one at a time.
+    // A more robust solution might involve a dedicated `clearAllProductsInSheet` function.
+    for (const product of products) { // Iterate over a copy
       const success = await deleteProductFromSheet({ 
         name: product.name, 
         volume: product.volume 
       });
-      
       if (!success) {
         allDeleted = false;
-        failedDeletions.push(product);
+        // Optionally, stop or collect failed deletions
+        // For now, we'll just report if any failed
       }
     }
-
-    setIsLoading(false);
+    
+    await loadProducts(false); // Reload products from sheet
+    setPopularityVersion(v => v + 1); // Update popularity
 
     if (allDeleted) {
       toast({ 
         title: "Все товары удалены", 
-        description: "Список товаров был очищен.", 
+        description: "Список товаров был очищен из Google Sheet.", 
         variant: "destructive" 
       });
     } else {
       toast({
         title: "Ошибка очистки",
-        description: `Не удалось удалить ${failedDeletions.length} из ${originalProducts.length} товаров. Восстановление...`,
+        description: `Не все товары удалось удалить. Пожалуйста, проверьте Google Sheet.`,
         variant: "destructive"
       });
-      setProducts(failedDeletions);
     }
-  }, [toast, products, isLoading, isSubmitting]);
+    setIsSubmitting(false);
+  }, [toast, products, isLoading, isSubmitting, loadProducts]);
 
-  // Начало редактирования продукта
+
   const startEditing = useCallback((product: Product) => {
     if (isLoading || isSubmitting) return;
     
@@ -563,13 +553,12 @@ export function ProductManagement() {
     });
   }, [editForm, isLoading, isSubmitting]);
 
-  // Отмена редактирования
+
   const cancelEditing = useCallback(() => {
     setEditingProductId(null);
     editForm.reset({ name: "", volume: "", price: undefined, imageUrl: "", dataAiHint: "" });
   }, [editForm]);
 
-  // Сохранение отредактированного продукта
   const onEditSubmit = useCallback(async (data: ProductFormData) => {
     if (!editingProductId || isSubmitting) return;
 
@@ -595,22 +584,6 @@ export function ProductManagement() {
       dataAiHint: data.dataAiHint || originalProduct.dataAiHint || [data.name.toLowerCase(), data.volume?.replace(/[^0-9.,]/g, '')].filter(Boolean).slice(0, 2).join(' ') || data.name.toLowerCase(),
     };
 
-    const updatedProductLocal: Product = {
-      ...originalProduct,
-      name: data.name,
-      volume: data.volume || undefined,
-      price: data.price,
-      imageUrl: data.imageUrl || undefined,
-      dataAiHint: productDataForSheet.dataAiHint,
-    };
-
-    // Оптимистичное обновление UI
-    setProducts((prev) =>
-      prev.map((p) => (p.id === editingProductId ? updatedProductLocal : p))
-    );
-    setEditingProductId(null);
-
-    // Обновление в Google Sheets
     const success = await updateProductInSheet({
       originalName: originalProduct.name,
       originalVolume: originalProduct.volume,
@@ -618,6 +591,9 @@ export function ProductManagement() {
     });
 
     if (success) {
+      await loadProducts(false); // Reload
+      setPopularityVersion(v => v + 1); // Update popularity
+      setEditingProductId(null);
       toast({ 
         title: "Товар обновлен", 
         description: `${data.name} ${data.volume || ''} успешно обновлен.` 
@@ -625,25 +601,21 @@ export function ProductManagement() {
     } else {
       toast({ 
         title: "Ошибка обновления", 
-        description: `Не удалось обновить товар "${originalProduct.name}". Восстановление...`, 
+        description: `Не удалось обновить товар "${originalProduct.name}". Возможно, новый товар уже существует или ошибка на сервере.`, 
         variant: "destructive" 
       });
-      // Откат изменений
-      setProducts((prev) =>
-        prev.map((p) => (p.id === updatedProductLocal.id ? originalProduct : p))
-      );
     }
     
     setIsSubmitting(false);
-  }, [editingProductId, toast, products, isSubmitting]);
+  }, [editingProductId, toast, products, isSubmitting, loadProducts]);
 
-  // Синхронизация с сырыми данными
+
   const handleSyncRawProducts = useCallback(async () => {
     if (isLoading || isSubmitting) return;
     
-    setIsLoading(true);
+    setIsSubmitting(true); // Use isSubmitting here
     const result = await syncRawProductsToSheet();
-    setIsLoading(false);
+    setIsSubmitting(false);
 
     toast({
       title: result.success ? "Синхронизация завершена" : "Ошибка синхронизации",
@@ -653,14 +625,15 @@ export function ProductManagement() {
 
     if (result.success && result.addedCount > 0) {
       await loadProducts(false);
+      setPopularityVersion(v => v + 1);
     }
   }, [toast, loadProducts, isLoading, isSubmitting]);
 
-  // Обновление списка продуктов
   const handleRefresh = useCallback(async () => {
     if (isLoading || isSubmitting) return;
     
     await loadProducts(true);
+    setPopularityVersion(v => v + 1); // Refresh popularity too
     
     if (!errorLoading) {
       toast({ 
@@ -670,7 +643,7 @@ export function ProductManagement() {
     }
   }, [loadProducts, toast, isLoading, isSubmitting, errorLoading]);
 
-  // Отображение для SSR
+
   if (!isClient) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -694,10 +667,9 @@ export function ProductManagement() {
     );
   }
 
-  // Основной рендер (клиентская часть)
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
-      {/* Форма добавления продукта */}
       <Card className="shadow-md flex flex-col">
         <CardHeader>
           <CardTitle className="flex items-center text-lg md:text-xl">
@@ -709,14 +681,12 @@ export function ProductManagement() {
         </CardContent>
       </Card>
 
-      {/* Список существующих продуктов */}
       <Card className="shadow-md flex flex-col h-[70vh]">
         <CardHeader className="flex flex-row items-center justify-between pb-4">
           <CardTitle className="text-lg md:text-xl">
             Существующие товары ({isLoading && products.length === 0 ? '...' : products.length})
           </CardTitle>
           <div className="flex gap-2">
-            {/* Кнопка синхронизации */}
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -737,7 +707,6 @@ export function ProductManagement() {
               </Tooltip>
             </TooltipProvider>
             
-            {/* Кнопка очистки всех продуктов */}
             <AlertDialog open={isClearAllDialogOpen} onOpenChange={setIsClearAllDialogOpen}>
               <TooltipProvider>
                 <Tooltip>
@@ -767,12 +736,13 @@ export function ProductManagement() {
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel className="text-xs px-3 h-9">Отмена</AlertDialogCancel>
+                  <AlertDialogCancel className="text-xs px-3 h-9" disabled={isSubmitting}>Отмена</AlertDialogCancel>
                   <AlertDialogAction 
                     onClick={clearAllProducts} 
                     className={buttonVariants({ variant: "destructive", size: "sm", className: "text-xs px-3 h-9" })}
+                    disabled={isSubmitting}
                   >
-                    Удалить все
+                    {isSubmitting ? 'Удаление...' : 'Удалить все'}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
@@ -780,7 +750,6 @@ export function ProductManagement() {
           </div>
         </CardHeader>
         <CardContent className="flex-grow overflow-hidden p-0 flex flex-col">
-          {/* Поиск, сортировка, обновление */}
           <div className="flex gap-2 px-6 py-4 items-center flex-shrink-0 border-b">
             <div className="relative flex-grow">
               <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -805,7 +774,6 @@ export function ProductManagement() {
               )}
             </div>
             
-            {/* Выпадающее меню сортировки */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button 
@@ -859,7 +827,6 @@ export function ProductManagement() {
               </DropdownMenuContent>
             </DropdownMenu>
             
-            {/* Кнопка обновления */}
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -867,7 +834,7 @@ export function ProductManagement() {
                     variant="ghost" 
                     size="icon" 
                     onClick={handleRefresh} 
-                    className={cn("h-8 w-8 text-muted-foreground", isLoading && "animate-spin")} 
+                    className={cn("h-8 w-8 text-muted-foreground", (isLoading || isSubmitting) && "animate-spin")} 
                     disabled={isLoading || isSubmitting}
                   >
                     <RefreshCw className="h-4 w-4" /> 
@@ -881,12 +848,10 @@ export function ProductManagement() {
             </TooltipProvider>
           </div>
 
-          {/* Область сообщений об ошибках */}
           {errorLoading && !isLoading && (
             <p className="text-destructive text-center py-4 px-6">Ошибка загрузки: {errorLoading}</p>
           )}
 
-          {/* Прокручиваемый список продуктов */}
           {!errorLoading && (
             <ScrollArea className="flex-grow min-h-0 p-6 pt-4">
               <ProductList
@@ -906,7 +871,6 @@ export function ProductManagement() {
         </CardContent>
       </Card>
 
-      {/* Диалог подтверждения удаления */}
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -936,3 +900,4 @@ export function ProductManagement() {
     </div>
   );
 }
+
