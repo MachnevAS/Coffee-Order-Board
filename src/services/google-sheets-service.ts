@@ -1,4 +1,3 @@
-
 'use server';
 /**
  * @fileoverview Service for interacting with the Google Sheets API using Service Account authentication.
@@ -644,11 +643,12 @@ const xorEncryptDecrypt = (text: string, key: string): string => {
   return result;
 };
 
-// Hash password (simple XOR encryption for demonstration)
+// Hash password (simple XOR encryption + Base64 for demonstration)
 export const hashPassword = async (password: string): Promise<string> => {
-  console.warn("[Security] Using simple XOR for password 'encryption'. THIS IS NOT SECURE FOR PRODUCTION. Key used:", ENCRYPTION_KEY.substring(0,5) + "...");
-  const encrypted = xorEncryptDecrypt(password, ENCRYPTION_KEY);
-  return `${ENCRYPTION_TAG}${encrypted}`;
+  console.warn("[Security] Using simple XOR + Base64 for password 'encryption'. THIS IS NOT SECURE FOR PRODUCTION. Key used:", ENCRYPTION_KEY.substring(0,5) + "...");
+  const xored = xorEncryptDecrypt(password, ENCRYPTION_KEY);
+  const base64Encoded = Buffer.from(xored).toString('base64'); // Encode to Base64
+  return `${ENCRYPTION_TAG}${base64Encoded}`;
 };
 
 // Get user data from sheet
@@ -691,10 +691,16 @@ export const verifyPassword = async (inputPassword: string, storedPasswordWithTa
     return false;
   }
   if (storedPasswordWithTag.startsWith(ENCRYPTION_TAG)) {
-    const encryptedPassword = storedPasswordWithTag.substring(ENCRYPTION_TAG.length);
-    const decryptedStoredPassword = xorEncryptDecrypt(encryptedPassword, ENCRYPTION_KEY);
-    console.log(`[Security] Verifying 'encrypted' password. Decrypted stored: "${decryptedStoredPassword}". Key used:`, ENCRYPTION_KEY.substring(0,5) + "...");
-    return inputPassword === decryptedStoredPassword;
+    const base64EncodedPassword = storedPasswordWithTag.substring(ENCRYPTION_TAG.length);
+    try {
+      const xoredStoredPassword = Buffer.from(base64EncodedPassword, 'base64').toString(); // Decode from Base64
+      const decryptedStoredPassword = xorEncryptDecrypt(xoredStoredPassword, ENCRYPTION_KEY);
+      console.log(`[Security] Verifying 'encrypted' (XOR+Base64) password. Decrypted stored: "${decryptedStoredPassword}". Key used:`, ENCRYPTION_KEY.substring(0,5) + "...");
+      return inputPassword === decryptedStoredPassword;
+    } catch (e) {
+      console.error("[GSHEET VerifyPassword] Error decoding Base64 password:", e);
+      return false; // Invalid Base64 string
+    }
   } else {
     console.warn("[Security] Comparing plain text password. User should update their password.");
     return inputPassword === storedPasswordWithTag;
@@ -727,7 +733,7 @@ export const updateUserInSheet = async (originalLogin: string, updates: Partial<
   }
 
   try {
-    console.log(`[GSHEET User] Updating user: "${originalLogin}" with updates:`, JSON.stringify(updates)); // Log stringified updates
+    console.log(`[GSHEET User] Updating user: "${originalLogin}" with updates:`, JSON.stringify(updates)); 
     const rowIndex = await findUserRowIndexByLogin(originalLogin);
     if (rowIndex === null) {
       console.error(`[GSHEET User] User "${originalLogin}" not found for update.`);
@@ -751,20 +757,19 @@ export const updateUserInSheet = async (originalLogin: string, updates: Partial<
       updatedRow.push('');
     }
     
-    // Handle login update
     if (updates.login !== undefined && updates.login !== originalLogin) {
       const newLoginIndex = await findUserRowIndexByLogin(updates.login);
       if (newLoginIndex !== null && newLoginIndex !== rowIndex) { 
         console.warn(`[GSHEET User] Update conflict: New login "${updates.login}" already exists for another user.`);
-        return false; // Or throw an error to be caught by the API
+        return false; 
       }
       updatedRow[USER_COLUMN_MAP.login] = updates.login;
     } else if (updates.login !== undefined) {
         updatedRow[USER_COLUMN_MAP.login] = updates.login;
     }
     
-    // IMPORTANT: The `updates.passwordHash` from the form when changing password is the NEW PLAIN TEXT password.
-    // It needs to be hashed here before saving.
+    // If updates.passwordHash is provided, it's expected to be the new PLAIN TEXT password.
+    // This function will hash it before saving.
     if (updates.passwordHash !== undefined) {
       console.log(`[GSHEET User] New plain password received for hashing: "${updates.passwordHash.substring(0,2)}..." for user: ${originalLogin}`);
       const newHashedPassword = await hashPassword(updates.passwordHash); // hashPassword expects plain text
