@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -22,6 +23,7 @@ import type { User } from '@/types/user';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle, Palette } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
+import { cn } from '@/lib/utils';
 
 const profileSchema = z.object({
   login: z.string().min(3, 'Логин должен быть не менее 3 символов'),
@@ -32,7 +34,7 @@ const profileSchema = z.object({
   iconColor: z.string()
     .regex(/^#([0-9A-Fa-f]{3,4}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$/, "Неверный HEX цвет (например, #RRGGBB, #RGB, #RRGGBBAA, #RGBA)")
     .optional()
-    .or(z.literal('')), // Allow empty string to clear
+    .or(z.literal('')), 
   currentPassword: z.string().optional().or(z.literal('')),
   newPassword: z.string()
     .min(6, 'Новый пароль должен быть не менее 6 символов')
@@ -70,6 +72,9 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
   const { toast } = useToast();
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  // Track which user's data the form was initialized with to prevent unwanted resets
+  const [formInitializedForUserId, setFormInitializedForUserId] = useState<string | number | null>(null);
+
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
@@ -88,21 +93,29 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
 
   useEffect(() => {
     if (user && isOpen) {
-      form.reset({
-        login: user.login || '',
-        firstName: user.firstName || '',
-        middleName: user.middleName || '',
-        lastName: user.lastName || '',
-        position: user.position || '',
-        iconColor: user.iconColor || '',
-        currentPassword: '',
-        newPassword: '',
-        confirmNewPassword: '',
-      });
-      setError(null); // Clear previous errors when modal opens or user changes
-      form.clearErrors(); // Clear previous form validation errors
+      // Only reset the form if the modal is newly opened for this user
+      // or if the user being edited has changed.
+      if (formInitializedForUserId !== user.id) {
+        form.reset({
+          login: user.login || '',
+          firstName: user.firstName || '',
+          middleName: user.middleName || '',
+          lastName: user.lastName || '',
+          position: user.position || '',
+          iconColor: user.iconColor || '#cccccc', // Default to a neutral color if undefined
+          currentPassword: '',
+          newPassword: '',
+          confirmNewPassword: '',
+        });
+        setError(null); 
+        form.clearErrors(); 
+        setFormInitializedForUserId(user.id);
+      }
+    } else if (!isOpen) {
+      // Reset the tracking state when the modal is closed
+      setFormInitializedForUserId(null);
     }
-  }, [user, isOpen, form]);
+  }, [user, isOpen, form, formInitializedForUserId]);
 
   const onSubmit = async (data: ProfileFormValues) => {
     setError(null);
@@ -230,7 +243,7 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
     <Dialog open={isOpen} onOpenChange={(open) => {
       if (!isLoading) setIsOpen(open); 
     }}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className={cn("sm:max-w-md p-4 sm:p-6", isOpen ? "max-h-[90vh] overflow-y-auto" : "")}>
         <DialogHeader>
           <DialogTitle>Редактировать профиль</DialogTitle>
           <DialogDescription>
@@ -245,16 +258,17 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
             {form.formState.errors.login && <p className="text-xs text-destructive">{form.formState.errors.login.message}</p>}
           </div>
 
-          <div className="grid gap-1.5">
-            <Label htmlFor="lastName">Фамилия</Label>
-            <Input id="lastName" {...form.register('lastName')} disabled={isLoading} />
-            {form.formState.errors.lastName && <p className="text-xs text-destructive">{form.formState.errors.lastName.message}</p>}
-          </div>
-
-          <div className="grid gap-1.5">
-            <Label htmlFor="firstName">Имя</Label>
-            <Input id="firstName" {...form.register('firstName')} disabled={isLoading} />
-            {form.formState.errors.firstName && <p className="text-xs text-destructive">{form.formState.errors.firstName.message}</p>}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid gap-1.5">
+                <Label htmlFor="lastName">Фамилия</Label>
+                <Input id="lastName" {...form.register('lastName')} disabled={isLoading} />
+                {form.formState.errors.lastName && <p className="text-xs text-destructive">{form.formState.errors.lastName.message}</p>}
+            </div>
+            <div className="grid gap-1.5">
+                <Label htmlFor="firstName">Имя</Label>
+                <Input id="firstName" {...form.register('firstName')} disabled={isLoading} />
+                {form.formState.errors.firstName && <p className="text-xs text-destructive">{form.formState.errors.firstName.message}</p>}
+            </div>
           </div>
 
           <div className="grid gap-1.5">
@@ -263,25 +277,26 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
             {form.formState.errors.middleName && <p className="text-xs text-destructive">{form.formState.errors.middleName.message}</p>}
           </div>
 
-          <div className="grid gap-1.5">
-            <Label htmlFor="position">Должность</Label>
-            <Input id="position" {...form.register('position')} disabled={isLoading} />
-            {form.formState.errors.position && <p className="text-xs text-destructive">{form.formState.errors.position.message}</p>}
-          </div>
-          
-          <div className="grid gap-1.5">
-            <Label htmlFor="iconColor" className="flex items-center">
-              <Palette className="h-4 w-4 mr-1 inline-block" /> Цвет иконки
-            </Label>
-            <Input 
-              id="iconColor" 
-              type="color" // Use color input type
-              {...form.register('iconColor')} 
-              disabled={isLoading} 
-              className="h-10 w-14 p-1" // Adjust size for color picker
-              placeholder="#RRGGBB" 
-            />
-            {form.formState.errors.iconColor && <p className="text-xs text-destructive">{form.formState.errors.iconColor.message}</p>}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
+            <div className="grid gap-1.5">
+                <Label htmlFor="position">Должность</Label>
+                <Input id="position" {...form.register('position')} disabled={isLoading} />
+                {form.formState.errors.position && <p className="text-xs text-destructive">{form.formState.errors.position.message}</p>}
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="iconColor" className="flex items-center">
+                <Palette className="h-4 w-4 mr-1 inline-block" /> Цвет иконки
+              </Label>
+              <Input 
+                id="iconColor" 
+                type="color" 
+                {...form.register('iconColor')} 
+                disabled={isLoading} 
+                className="h-10 w-full sm:w-14 p-1" 
+                defaultValue="#cccccc"
+              />
+              {form.formState.errors.iconColor && <p className="text-xs text-destructive">{form.formState.errors.iconColor.message}</p>}
+            </div>
           </div>
 
           <Separator className="my-4" /> 
@@ -293,16 +308,17 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
             {form.formState.errors.currentPassword && <p className="text-xs text-destructive">{form.formState.errors.currentPassword.message}</p>}
           </div>
 
-          <div className="grid gap-1.5">
-            <Label htmlFor="newPassword">Новый пароль</Label>
-            <Input id="newPassword" type="password" {...form.register('newPassword')} disabled={isLoading} autoComplete="new-password"/>
-            {form.formState.errors.newPassword && <p className="text-xs text-destructive">{form.formState.errors.newPassword.message}</p>}
-          </div>
-
-          <div className="grid gap-1.5">
-            <Label htmlFor="confirmNewPassword">Подтвердите новый пароль</Label>
-            <Input id="confirmNewPassword" type="password" {...form.register('confirmNewPassword')} disabled={isLoading} autoComplete="new-password"/>
-             {form.formState.errors.confirmNewPassword && <p className="text-xs text-destructive">{form.formState.errors.confirmNewPassword.message}</p>}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid gap-1.5">
+                <Label htmlFor="newPassword">Новый пароль</Label>
+                <Input id="newPassword" type="password" {...form.register('newPassword')} disabled={isLoading} autoComplete="new-password"/>
+                {form.formState.errors.newPassword && <p className="text-xs text-destructive">{form.formState.errors.newPassword.message}</p>}
+            </div>
+            <div className="grid gap-1.5">
+                <Label htmlFor="confirmNewPassword">Подтвердите новый пароль</Label>
+                <Input id="confirmNewPassword" type="password" {...form.register('confirmNewPassword')} disabled={isLoading} autoComplete="new-password"/>
+                {form.formState.errors.confirmNewPassword && <p className="text-xs text-destructive">{form.formState.errors.confirmNewPassword.message}</p>}
+            </div>
           </div>
           
           {error && !form.formState.errors.login && !form.formState.errors.currentPassword && !form.formState.errors.newPassword && !form.formState.errors.confirmNewPassword && (
@@ -313,13 +329,13 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
             </Alert>
           )}
 
-          <DialogFooter className="pt-4"> 
+          <DialogFooter className="pt-4 flex-col sm:flex-row gap-2 sm:gap-0"> 
             <DialogClose asChild>
-              <Button type="button" variant="outline" disabled={isLoading}>
+              <Button type="button" variant="outline" disabled={isLoading} className="w-full sm:w-auto">
                 Отмена
               </Button>
             </DialogClose>
-            <Button type="submit" disabled={isLoading}>
+            <Button type="submit" disabled={isLoading} className="w-full sm:w-auto">
               {isLoading ? 'Сохранение...' : 'Сохранить'}
             </Button>
           </DialogFooter>
@@ -328,3 +344,5 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
     </Dialog>
   );
 }
+
+
