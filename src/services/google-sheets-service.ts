@@ -12,6 +12,7 @@ import type { Product } from '@/types/product';
 import type { User } from '@/types/user';
 import type { Order, SalesHistoryItem, PaymentMethod } from '@/types/order';
 import { getRawProductData } from '@/lib/product-defaults';
+import { format, parseISO } from 'date-fns'; // Added for date formatting
 
 // --- Service Account Authentication ---
 const {
@@ -196,10 +197,28 @@ const rowToOrder = (row): Order | null => {
 
   const totalPriceStr = row[HISTORY_COLUMN_MAP.totalPrice]?.toString().replace(',', '.').trim();
   const isValidTotalPrice = /^\d+(\.\d+)?$/.test(totalPriceStr);
+  
+  // Attempt to parse the timestamp from the sheet (which should be 'dd.MM.yyyy HH:mm:ss')
+  // and convert it back to ISO for consistency within the app if needed.
+  // For display, it's already in a good format.
+  let isoTimestamp = row[HISTORY_COLUMN_MAP.timestamp]; // Default to what's in the sheet
+  try {
+    // If the sheet stores 'dd.MM.yyyy HH:mm:ss', we might need to parse it differently
+    // For now, assume it's already a usable string or ISO. If it's 'dd.MM.yyyy HH:mm:ss',
+    // and we need ISO for internal logic, parsing would be:
+    // const parts = row[HISTORY_COLUMN_MAP.timestamp].split(' ');
+    // const dateParts = parts[0].split('.');
+    // const timeParts = parts[1].split(':');
+    // isoTimestamp = new Date(Date.UTC(Number(dateParts[2]), Number(dateParts[1]) - 1, Number(dateParts[0]), Number(timeParts[0]), Number(timeParts[1]), Number(timeParts[2]))).toISOString();
+    // However, for direct use from sheet to SalesHistory component, the original format might be fine.
+  } catch(e) {
+    console.warn(`[GSHEET History] Could not parse timestamp ${row[HISTORY_COLUMN_MAP.timestamp]} into ISO. Using original value.`);
+  }
+
 
   return {
     id: row[HISTORY_COLUMN_MAP.orderId],
-    timestamp: row[HISTORY_COLUMN_MAP.timestamp], // Assuming ISO string
+    timestamp: isoTimestamp, 
     items,
     paymentMethod: row[HISTORY_COLUMN_MAP.paymentMethod] as PaymentMethod,
     totalPrice: isValidTotalPrice ? parseFloat(totalPriceStr) : 0,
@@ -223,7 +242,13 @@ const productToRow = (product) => {
 const orderToRow = (order: Order): string[] => {
   const rowValues = Array(Object.keys(HISTORY_COLUMN_MAP).length).fill('');
   rowValues[HISTORY_COLUMN_MAP.orderId] = order.id;
-  rowValues[HISTORY_COLUMN_MAP.timestamp] = order.timestamp;
+  // Format timestamp before writing to sheet
+  try {
+    rowValues[HISTORY_COLUMN_MAP.timestamp] = format(parseISO(order.timestamp), 'dd.MM.yyyy HH:mm:ss');
+  } catch (e) {
+    console.warn(`[GSHEET History] Could not format timestamp ${order.timestamp}. Using original value.`);
+    rowValues[HISTORY_COLUMN_MAP.timestamp] = order.timestamp;
+  }
   
   // Human-readable items string: "Product A (Vol A) xQtyA, Product B xQtyB"
   rowValues[HISTORY_COLUMN_MAP.items] = order.items.map(item => {
@@ -231,10 +256,6 @@ const orderToRow = (order: Order): string[] => {
     if (item.volume) {
       itemStr += ` (${item.volume})`;
     }
-    // Optionally include price per item in the string if desired for readability in the sheet
-    // if (item.price !== undefined) {
-    //   itemStr += ` - ${item.price.toFixed(0)}₽`;
-    // }
     itemStr += ` x${item.quantity}`;
     return itemStr;
   }).join(', ');

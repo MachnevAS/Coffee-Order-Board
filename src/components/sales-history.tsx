@@ -44,8 +44,26 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 const GOOGLE_SHEET_ID = process.env.NEXT_PUBLIC_GOOGLE_SHEET_ID || process.env.GOOGLE_SHEET_ID;
 const GOOGLE_HISTORY_SHEET_NAME = process.env.NEXT_PUBLIC_GOOGLE_HISTORY_SHEET_NAME || process.env.GOOGLE_HISTORY_SHEET_NAME;
 
+// Function to try and get GID from sheet name (if your sheet names are unique and GID is needed directly)
+// This is a placeholder; in reality, you often get the GID by inspecting the URL when the sheet is open
+// or by using the Sheets API to list sheets and their properties.
+// For constructing a direct link, often just the sheet name in the URL fragment is enough if it's the primary way to identify.
+// However, Google Sheets URLs typically use `gid=SHEET_ID_NUMBER`.
+// If your `GOOGLE_HISTORY_SHEET_NAME` is actually the GID, this can be simplified.
+const getSheetUrlFragment = (sheetNameOrGid: string | undefined) => {
+  if (!sheetNameOrGid) return '';
+  // If it's a number, assume it's a GID
+  if (/^\d+$/.test(sheetNameOrGid)) {
+    return `gid=${sheetNameOrGid}`;
+  }
+  // Otherwise, assume it's a sheet name (less reliable for direct linking if not unique or first sheet)
+  // For robust linking, GID is preferred. Here, we'll try to encode it for URL fragment.
+  return `gid=${encodeURIComponent(sheetNameOrGid)}`; // This part might need adjustment based on how your GIDs are stored/used
+};
+
+
 const googleSheetHistoryUrl = GOOGLE_SHEET_ID && GOOGLE_HISTORY_SHEET_NAME
-  ? `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/edit#gid=${encodeURIComponent(GOOGLE_HISTORY_SHEET_NAME)}` // Assuming gid can be found or manually set if name doesn't work
+  ? `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/edit#${getSheetUrlFragment(GOOGLE_HISTORY_SHEET_NAME)}`
   : '#';
 
 
@@ -126,7 +144,16 @@ export function SalesHistory() {
       const end = dateRange.to ? endOfDay(dateRange.to) : endOfDay(dateRange.from);
       filtered = filtered.filter((order) => {
         try {
-          const orderDate = parseISO(order.timestamp);
+          // Try parsing as 'dd.MM.yyyy HH:mm:ss' first, then as ISO
+          let orderDate;
+          if (typeof order.timestamp === 'string' && order.timestamp.includes('.')) { // Likely 'dd.MM.yyyy HH:mm:ss'
+            const parts = order.timestamp.split(' ');
+            const dateParts = parts[0].split('.');
+            const timeParts = parts[1].split(':');
+            orderDate = new Date(Number(dateParts[2]), Number(dateParts[1]) - 1, Number(dateParts[0]), Number(timeParts[0]), Number(timeParts[1]), Number(timeParts[2]));
+          } else { // Assume ISO
+            orderDate = parseISO(order.timestamp);
+          }
           return isValid(orderDate) && orderDate >= start && orderDate <= end;
         } catch (e) {
           console.warn(`Invalid date encountered for order ${order.id}: ${order.timestamp}`);
@@ -142,7 +169,19 @@ export function SalesHistory() {
 
         switch (key) {
           case 'timestamp':
-            comparison = parseISO(a.timestamp).getTime() - parseISO(b.timestamp).getTime();
+            try {
+               let dateA, dateB;
+                if (typeof a.timestamp === 'string' && a.timestamp.includes('.')) {
+                    const partsA = a.timestamp.split(' '); const datePartsA = partsA[0].split('.'); const timePartsA = partsA[1].split(':');
+                    dateA = new Date(Number(datePartsA[2]), Number(datePartsA[1]) - 1, Number(datePartsA[0]), Number(timePartsA[0]), Number(timePartsA[1]), Number(timePartsA[2]));
+                } else { dateA = parseISO(a.timestamp); }
+
+                if (typeof b.timestamp === 'string' && b.timestamp.includes('.')) {
+                    const partsB = b.timestamp.split(' '); const datePartsB = partsB[0].split('.'); const timePartsB = partsB[1].split(':');
+                    dateB = new Date(Number(datePartsB[2]), Number(datePartsB[1]) - 1, Number(datePartsB[0]), Number(timePartsB[0]), Number(timePartsB[1]), Number(timePartsB[2]));
+                } else { dateB = parseISO(b.timestamp); }
+                comparison = dateA.getTime() - dateB.getTime();
+            } catch (e) { console.warn("Error parsing dates for sorting:", a.timestamp, b.timestamp); }
             break;
           case 'paymentMethod':
             comparison = (a.paymentMethod || '').localeCompare(b.paymentMethod || '', ru.code);
@@ -254,6 +293,24 @@ export function SalesHistory() {
       </Card>
     );
   }
+  
+  const formatDisplayDate = (timestamp: string) => {
+    try {
+      // If the timestamp is in 'dd.MM.yyyy HH:mm:ss' format from sheet, use it directly
+      if (typeof timestamp === 'string' && timestamp.includes('.') && timestamp.includes(':')) {
+         // Further check to ensure it's not an ISO string with milliseconds
+         if (!timestamp.includes('T') && !timestamp.includes('Z')) {
+            return timestamp; // Already in 'dd.MM.yyyy HH:mm:ss'
+         }
+      }
+      // Otherwise, assume ISO and format it
+      return format(parseISO(timestamp), 'dd.MM.yyyy HH:mm:ss', { locale: ru });
+    } catch (e) {
+      console.warn("Failed to format date for display:", timestamp);
+      return timestamp; // Fallback to original if parsing fails
+    }
+  };
+
 
   return (
     <Card className="shadow-md">
@@ -304,7 +361,7 @@ export function SalesHistory() {
               asChild
               size="sm" 
               className="h-9 md:h-10 text-xs md:text-sm px-3"
-              disabled={isLoading}
+              disabled={isLoading || !GOOGLE_SHEET_ID || !GOOGLE_HISTORY_SHEET_NAME}
             >
               <a href={googleSheetHistoryUrl} target="_blank" rel="noopener noreferrer">
                 <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> Открыть таблицу
@@ -366,7 +423,7 @@ export function SalesHistory() {
                   Товары
                 </TableHead>
                 <TableHead 
-                  className="w-[120px] md:w-[150px] text-xs md:text-sm px-2 md:px-4 cursor-pointer hover:bg-muted/50 whitespace-nowrap" 
+                  className="w-[120px] md:w-[180px] text-xs md:text-sm px-2 md:px-4 cursor-pointer hover:bg-muted/50 whitespace-nowrap" 
                   onClick={() => requestSort('employee')}
                 >
                   <div className="flex items-center">
@@ -415,25 +472,25 @@ export function SalesHistory() {
                 filteredAndSortedOrders.map((order) => (
                   <TableRow key={order.id}>
                     <TableCell className="font-medium hidden sm:table-cell text-xs md:text-sm px-2 md:px-4 py-2 md:py-3 align-top whitespace-nowrap">
-                      {format(parseISO(order.timestamp), 'dd.MM.yy HH:mm', { locale: ru })}
+                       {formatDisplayDate(order.timestamp)}
                     </TableCell>
                     <TableCell className="px-2 md:px-4 py-2 md:py-3 align-top min-w-[150px]">
                       <div className="flex flex-col gap-0.5">
                         <div className="sm:hidden text-[10px] text-muted-foreground mb-1 whitespace-nowrap">
-                          {format(parseISO(order.timestamp), 'dd.MM.yy HH:mm', { locale: ru })}
+                          {formatDisplayDate(order.timestamp)}
                         </div>
                         {order.items.map((item, index) => (
                           <div key={`${order.id}-${item.id}-${index}`} className="flex items-center text-xs md:text-sm leading-snug whitespace-nowrap">
                             {item.name}
                             {item.volume && <span className="text-muted-foreground ml-1">({item.volume})</span>}
                             <Badge variant="secondary" className="ml-1.5 px-1 py-0 text-[9px] md:text-[10px] h-4">
-                              {item.quantity}
+                              x{item.quantity}
                             </Badge>
                           </div>
                         ))}
                       </div>
                     </TableCell>
-                    <TableCell className="text-xs md:text-sm px-2 md:px-4 py-2 md:py-3 align-top whitespace-nowrap">
+                    <TableCell className="text-xs md:text-sm px-2 md:px-4 py-2 md:py-3 align-top whitespace-normal break-words max-w-[180px]">
                       {order.employee || 'Н/У'}
                     </TableCell>
                     <TableCell className="text-xs md:text-sm px-2 md:px-4 py-2 md:py-3 align-top whitespace-nowrap">
@@ -467,7 +524,7 @@ export function SalesHistory() {
                             <AlertDialogHeader>
                               <AlertDialogTitle>Вы уверены?</AlertDialogTitle>
                               <AlertDialogDescription>
-                                Заказ от {format(parseISO(order.timestamp), 'dd.MM.yyyy HH:mm', { locale: ru })} на сумму {formatCurrency(order.totalPrice)} ({order.paymentMethod || 'Н/У'}) будет удален.
+                                Заказ от {formatDisplayDate(order.timestamp)} на сумму {formatCurrency(order.totalPrice)} ({order.paymentMethod || 'Н/У'}) будет удален.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
