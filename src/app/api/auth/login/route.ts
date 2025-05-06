@@ -18,10 +18,10 @@ export async function POST(request: Request) {
     const userData = await getUserDataFromSheet(login);
 
     if (!userData || !userData.passwordHash) {
-      console.log(`[API Login] User not found or missing password hash for login: ${login}`);
+      console.log(`[API Login] User not found or missing password hash for login: ${login}. UserData: ${JSON.stringify(userData)}`);
       return NextResponse.json({ error: 'Неверный логин или пароль' }, { status: 401 });
     }
-    console.log(`[API Login] Found user data for login: ${login}`);
+    console.log(`[API Login] Found user data for login: ${login}. Stored passwordHash: "${userData.passwordHash}"`);
 
 
     // Verify password using the function (even if it's plain text for now)
@@ -48,7 +48,7 @@ export async function POST(request: Request) {
     currentSession.user = userSessionData; // Set the user data
     await currentSession.save(); // Save the session
 
-    const showPasswordChangeWarning = !userData.passwordHash.startsWith(ENCRYPTION_TAG);
+    const showPasswordChangeWarning = typeof userData.passwordHash === 'string' && !userData.passwordHash.startsWith(ENCRYPTION_TAG);
 
     console.log(`[API Login] Successful login for user: ${login}, session saved. Password warning: ${showPasswordChangeWarning}`);
     return NextResponse.json({ user: userSessionData, showPasswordChangeWarning });
@@ -58,4 +58,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Внутренняя ошибка сервера' }, { status: 500 });
   }
 }
-

@@ -155,7 +155,7 @@ const rowToUser = (row: any[]): User | null => {
   return {
     id: row[USER_COLUMN_MAP.id] ?? '',
     login: row[USER_COLUMN_MAP.login],
-    passwordHash: row[USER_COLUMN_MAP.passwordHash],
+    passwordHash: row[USER_COLUMN_MAP.passwordHash], // Keep as string
     firstName: row[USER_COLUMN_MAP.firstName] || undefined,
     middleName: row[USER_COLUMN_MAP.middleName] || undefined,
     lastName: row[USER_COLUMN_MAP.lastName] || undefined,
@@ -646,7 +646,7 @@ const xorEncryptDecrypt = (text: string, key: string): string => {
 
 // Hash password (simple XOR encryption for demonstration)
 export const hashPassword = async (password: string): Promise<string> => {
-  console.warn("[Security] Using simple XOR for password 'encryption'. THIS IS NOT SECURE FOR PRODUCTION.");
+  console.warn("[Security] Using simple XOR for password 'encryption'. THIS IS NOT SECURE FOR PRODUCTION. Key used:", ENCRYPTION_KEY.substring(0,5) + "...");
   const encrypted = xorEncryptDecrypt(password, ENCRYPTION_KEY);
   return `${ENCRYPTION_TAG}${encrypted}`;
 };
@@ -657,7 +657,7 @@ export const getUserDataFromSheet = async (login: string): Promise<User | null> 
   if (!currentSheets) return null;
 
   try {
-    console.log(`[GSHEET User] Fetching user data for: ${login}`);
+    console.log(`[GSHEET User] Fetching user data for login: "${login}"`);
     const response = await currentSheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
       range: USER_DATA_RANGE,
@@ -674,8 +674,9 @@ export const getUserDataFromSheet = async (login: string): Promise<User | null> 
       console.log(`[GSHEET User] User "${login}" not found.`);
       return null;
     }
-
-    return rowToUser(userRow);
+    const userObject = rowToUser(userRow);
+    console.log(`[GSHEET User] User data found for "${login}":`, JSON.stringify(userObject));
+    return userObject;
   } catch (error: any) {
     console.error(`[GSHEET User] Error fetching user "${login}":`, error?.message || error);
     return null;
@@ -684,10 +685,15 @@ export const getUserDataFromSheet = async (login: string): Promise<User | null> 
 
 // Verify password
 export const verifyPassword = async (inputPassword: string, storedPasswordWithTag: string): Promise<boolean> => {
+  console.log(`[GSHEET VerifyPassword] Input: "${inputPassword}", Stored: "${storedPasswordWithTag}"`);
+  if (typeof storedPasswordWithTag !== 'string') {
+    console.error("[GSHEET VerifyPassword] Stored password is not a string.");
+    return false;
+  }
   if (storedPasswordWithTag.startsWith(ENCRYPTION_TAG)) {
     const encryptedPassword = storedPasswordWithTag.substring(ENCRYPTION_TAG.length);
     const decryptedStoredPassword = xorEncryptDecrypt(encryptedPassword, ENCRYPTION_KEY);
-    console.log("[Security] Verifying 'encrypted' password.");
+    console.log(`[Security] Verifying 'encrypted' password. Decrypted stored: "${decryptedStoredPassword}". Key used:`, ENCRYPTION_KEY.substring(0,5) + "...");
     return inputPassword === decryptedStoredPassword;
   } else {
     console.warn("[Security] Comparing plain text password. User should update their password.");
@@ -745,14 +751,25 @@ export const updateUserInSheet = async (originalLogin: string, updates: Partial<
       updatedRow.push('');
     }
     
-    if (updates.login !== undefined) updatedRow[USER_COLUMN_MAP.login] = updates.login;
+    // Handle login update
+    if (updates.login !== undefined && updates.login !== originalLogin) {
+      const newLoginIndex = await findUserRowIndexByLogin(updates.login);
+      if (newLoginIndex !== null && newLoginIndex !== rowIndex) { 
+        console.warn(`[GSHEET User] Update conflict: New login "${updates.login}" already exists for another user.`);
+        return false; // Or throw an error to be caught by the API
+      }
+      updatedRow[USER_COLUMN_MAP.login] = updates.login;
+    } else if (updates.login !== undefined) {
+        updatedRow[USER_COLUMN_MAP.login] = updates.login;
+    }
     
-    // Hash password if it's being updated
+    // IMPORTANT: The `updates.passwordHash` from the form when changing password is the NEW PLAIN TEXT password.
+    // It needs to be hashed here before saving.
     if (updates.passwordHash !== undefined) {
-      // The passwordHash here is actually the new plain text password from the form
-      console.log(`[GSHEET User] Hashing new password for user: ${originalLogin}`);
-      const newHashedPassword = await hashPassword(updates.passwordHash);
+      console.log(`[GSHEET User] New plain password received for hashing: "${updates.passwordHash.substring(0,2)}..." for user: ${originalLogin}`);
+      const newHashedPassword = await hashPassword(updates.passwordHash); // hashPassword expects plain text
       updatedRow[USER_COLUMN_MAP.passwordHash] = newHashedPassword;
+      console.log(`[GSHEET User] New hashed password for sheet: "${newHashedPassword}"`);
     }
 
     if (updates.firstName !== undefined) updatedRow[USER_COLUMN_MAP.firstName] = updates.firstName || '';
@@ -761,18 +778,11 @@ export const updateUserInSheet = async (originalLogin: string, updates: Partial<
     if (updates.position !== undefined) updatedRow[USER_COLUMN_MAP.position] = updates.position || '';
     if (updates.iconColor !== undefined) updatedRow[USER_COLUMN_MAP.iconColor] = updates.iconColor || '';
 
-    if (updates.login && updates.login !== originalLogin) {
-      const newLoginIndex = await findUserRowIndexByLogin(updates.login);
-      if (newLoginIndex !== null && newLoginIndex !== rowIndex) { 
-        console.warn(`[GSHEET User] Update conflict: New login "${updates.login}" already exists for another user.`);
-        return false;
-      }
-    }
 
     await currentSheets.spreadsheets.values.update({
       spreadsheetId: SHEET_ID,
       range: userRowRange,
-      valueInputOption: 'USER_ENTERED', // Ensure formulas are not interpreted
+      valueInputOption: 'USER_ENTERED', 
       requestBody: {
         values: [updatedRow],
       },
@@ -919,17 +929,15 @@ export const clearAllOrdersFromSheet = async (): Promise<boolean> => {
   try {
     console.log(`[GSHEET History] Clearing all orders from sheet "${HISTORY_SHEET_NAME_ONLY}".`);
     
-    // Получаем id листа
     const sheetGid = await getSheetGid(HISTORY_SHEET_NAME_ONLY);
     if (sheetGid === null) {
       console.error(`[GSHEET History] Could not determine sheetId for "${HISTORY_SHEET_NAME_ONLY}". Aborting clear operation.`);
       return false;
     }
     
-    // Получаем количество строк в таблице
     const response = await currentSheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
-      range: `${HISTORY_SHEET_NAME_ONLY}!A:A`, // Check column A to determine row count
+      range: `${HISTORY_SHEET_NAME_ONLY}!A:A`, 
     });
     
     const rows = response.data.values;
@@ -938,8 +946,6 @@ export const clearAllOrdersFromSheet = async (): Promise<boolean> => {
       return true;
     }
     
-    // Создаем запрос на удаление всех строк, кроме заголовка
-    // Используем batchUpdate с одним большим запросом вместо множества маленьких
     await currentSheets.spreadsheets.batchUpdate({
       spreadsheetId: SHEET_ID,
       requestBody: {
@@ -948,8 +954,8 @@ export const clearAllOrdersFromSheet = async (): Promise<boolean> => {
             range: {
               sheetId: sheetGid,
               dimension: 'ROWS',
-              startIndex: HISTORY_HEADER_ROW_COUNT, // Начинаем со строки сразу после заголовка (индекс 0-based)
-              endIndex: rows.length // Удаляем до последней строки
+              startIndex: HISTORY_HEADER_ROW_COUNT, 
+              endIndex: rows.length 
             }
           }
         }]
@@ -977,14 +983,12 @@ export const clearAllProductsFromSheet = async (): Promise<boolean> => {
   try {
     console.log(`[GSHEET Product] Clearing all products from sheet "${PRODUCT_SHEET_NAME_ONLY}".`);
     
-    // Получаем id листа
     const sheetGid = await getSheetGid(PRODUCT_SHEET_NAME_ONLY);
     if (sheetGid === null) {
       console.error(`[GSHEET Product] Could not determine sheetId for "${PRODUCT_SHEET_NAME_ONLY}". Aborting clear operation.`);
       return false;
     }
     
-    // Получаем количество строк в таблице
     const response = await currentSheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
       range: `${PRODUCT_SHEET_NAME_ONLY}!A:A`,
@@ -996,7 +1000,6 @@ export const clearAllProductsFromSheet = async (): Promise<boolean> => {
       return true;
     }
     
-    // Создаем запрос на удаление всех строк, кроме заголовка
     await currentSheets.spreadsheets.batchUpdate({
       spreadsheetId: SHEET_ID,
       requestBody: {
@@ -1005,8 +1008,8 @@ export const clearAllProductsFromSheet = async (): Promise<boolean> => {
             range: {
               sheetId: sheetGid,
               dimension: 'ROWS',
-              startIndex: PRODUCT_HEADER_ROW_COUNT, // Начинаем со строки сразу после заголовка (индекс 0-based)
-              endIndex: rows.length // Удаляем до последней строки
+              startIndex: PRODUCT_HEADER_ROW_COUNT, 
+              endIndex: rows.length 
             }
           }
         }]
