@@ -1,4 +1,3 @@
-
 'use server';
 /**
  * @fileoverview Service for interacting with the Google Sheets API using Service Account authentication.
@@ -165,27 +164,31 @@ const rowToOrder = (row): Order | null => {
 
   let items: SalesHistoryItem[] = [];
   try {
-    // Items are stored as a JSON string: "Name1 (Volume1) xQty1, Name2 xQty2"
-    // This needs careful parsing. A better way would be to store as JSON stringified array.
-    // For now, assuming a simpler string format or direct JSON.
-    // Example simple parse (assumes "Name (Vol) xQty, ..."):
     const itemsString = row[HISTORY_COLUMN_MAP.items] ?? '';
-    if (itemsString.startsWith('[')) { // Check if it's a JSON array string
-        items = JSON.parse(itemsString);
-    } else { // Fallback for simple string format, less robust
+    if (itemsString.startsWith('[')) { // Check if it's a JSON array string (for backwards compatibility)
+        items = JSON.parse(itemsString).map(item => ({
+          id: item.id || `item_${Date.now()}_${Math.random()}`, // Ensure ID exists
+          name: item.name,
+          volume: item.volume,
+          price: item.price !== undefined ? Number(item.price) : 0,
+          quantity: Number(item.quantity)
+        }));
+    } else if (itemsString.length > 0) { // Parse human-readable string format
         items = itemsString.split(',').map(itemStr => {
-            const parts = itemStr.trim().match(/(.+?)(?:\s*\((.+?)\))?\s*x(\d+)/);
-            if (parts) {
+            // Regex to match: "ProductName (ProductVolume) xQuantity" or "ProductName xQuantity"
+            // It also captures the price if present: "ProductName (ProductVolume) - PricePerUnit₽ xQuantity"
+            const itemParts = itemStr.trim().match(/(.+?)(?:\s*\((.*?)\))?(?:\s*-\s*([\d.]+?)₽)?\s*x(\d+)/);
+            if (itemParts) {
                 return {
                     id: `item_${Date.now()}_${Math.random()}`, // Placeholder ID
-                    name: parts[1].trim(),
-                    volume: parts[2]?.trim(),
-                    price: 0, // Price per item not stored in this simplified string, might need adjustment
-                    quantity: parseInt(parts[3], 10),
+                    name: itemParts[1].trim(),
+                    volume: itemParts[2]?.trim() || undefined,
+                    price: itemParts[3] ? parseFloat(itemParts[3].replace(',', '.')) : 0, 
+                    quantity: parseInt(itemParts[4], 10),
                 };
             }
             return null;
-        }).filter(Boolean) as SalesHistoryItem[];
+        }).filter((item): item is SalesHistoryItem => item !== null);
     }
   } catch (e) {
     console.warn(`[GSHEET History] Could not parse items for order ${row[HISTORY_COLUMN_MAP.orderId]}: ${row[HISTORY_COLUMN_MAP.items]}`, e);
@@ -216,22 +219,30 @@ const productToRow = (product) => {
   return row;
 };
 
-// Helper to convert Order object to sheet row
+// Helper to convert Order object to sheet row for human-readable format
 const orderToRow = (order: Order): string[] => {
-  const row = Array(Object.keys(HISTORY_COLUMN_MAP).length).fill('');
-  row[HISTORY_COLUMN_MAP.orderId] = order.id;
-  row[HISTORY_COLUMN_MAP.timestamp] = order.timestamp;
-  // Store items as a JSON string for easier parsing later
-  row[HISTORY_COLUMN_MAP.items] = JSON.stringify(order.items.map(item => ({
-      name: item.name,
-      volume: item.volume,
-      quantity: item.quantity,
-      price: item.price // Include price per item if available
-  })));
-  row[HISTORY_COLUMN_MAP.paymentMethod] = order.paymentMethod;
-  row[HISTORY_COLUMN_MAP.totalPrice] = String(order.totalPrice).replace('.', ',');
-  row[HISTORY_COLUMN_MAP.employee] = order.employee ?? '';
-  return row;
+  const rowValues = Array(Object.keys(HISTORY_COLUMN_MAP).length).fill('');
+  rowValues[HISTORY_COLUMN_MAP.orderId] = order.id;
+  rowValues[HISTORY_COLUMN_MAP.timestamp] = order.timestamp;
+  
+  // Human-readable items string: "Product A (Vol A) xQtyA, Product B xQtyB"
+  rowValues[HISTORY_COLUMN_MAP.items] = order.items.map(item => {
+    let itemStr = item.name;
+    if (item.volume) {
+      itemStr += ` (${item.volume})`;
+    }
+    // Optionally include price per item in the string if desired for readability in the sheet
+    // if (item.price !== undefined) {
+    //   itemStr += ` - ${item.price.toFixed(0)}₽`;
+    // }
+    itemStr += ` x${item.quantity}`;
+    return itemStr;
+  }).join(', ');
+
+  rowValues[HISTORY_COLUMN_MAP.paymentMethod] = order.paymentMethod;
+  rowValues[HISTORY_COLUMN_MAP.totalPrice] = String(order.totalPrice).replace('.', ',');
+  rowValues[HISTORY_COLUMN_MAP.employee] = order.employee ?? '';
+  return rowValues;
 };
 
 
@@ -896,4 +907,3 @@ export const clearAllOrdersFromSheet = async (): Promise<boolean> => {
     return false;
   }
 };
-
