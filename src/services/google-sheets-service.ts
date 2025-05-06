@@ -12,7 +12,7 @@ import type { Product } from '@/types/product';
 import type { User } from '@/types/user';
 import type { Order, SalesHistoryItem, PaymentMethod } from '@/types/order';
 import { getRawProductData } from '@/lib/product-defaults';
-import { format, parseISO, isValid as isValidDate } from 'date-fns'; // Added isValidDate
+import { format, parseISO, isValid as isValidDate } from 'date-fns';
 
 // --- Service Account Authentication ---
 const {
@@ -120,8 +120,8 @@ const rowToProduct = (row, arrayIndex) => {
   const name = row[PRODUCT_COLUMN_MAP.name] ?? '';
   const volume = row[PRODUCT_COLUMN_MAP.volume] || undefined;
   const priceStr = row[PRODUCT_COLUMN_MAP.price]?.toString().replace(',', '.').trim();
-  const isValidPrice = /^\d+(\.\d+)?$/.test(priceStr);
-  const price = isValidPrice ? parseFloat(priceStr) : undefined;
+  const isValidPrice = /^\d*([.,]\d+)?$/.test(priceStr); // Allow empty string or valid number
+  const price = priceStr === '' ? undefined : (isValidPrice ? parseFloat(priceStr.replace(',', '.')) : undefined);
   const sheetRowIndex = arrayIndex + PRODUCT_DATA_START_ROW;
 
   return {
@@ -143,7 +143,8 @@ const rowToUser = (row) => {
   }
   
   const iconColorRaw = row[USER_COLUMN_MAP.iconColor];
-  const isValidColor = typeof iconColorRaw === 'string' && /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(iconColorRaw);
+  const isValidColor = typeof iconColorRaw === 'string' && /^#([0-9A-Fa-f]{3,4}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$/.test(iconColorRaw);
+
 
   return {
     id: row[USER_COLUMN_MAP.id] ?? '',
@@ -167,17 +168,14 @@ const rowToOrder = (row): Order | null => {
   try {
     const itemsString = row[HISTORY_COLUMN_MAP.items] ?? '';
     if (itemsString.length > 0) {
-        // Split items by ", " (comma and space)
         items = itemsString.split(', ').map(itemStr => {
-            // Regex to match: "ProductName (ProductVolume) xQuantity" or "ProductName xQuantity"
             const itemParts = itemStr.trim().match(/^(.+?)(?:\s+\((.+?)\))?\s+x(\d+)$/);
             if (itemParts) {
                 return {
-                    id: `item_${Date.now()}_${Math.random()}`, // Placeholder ID
+                    id: `item_${Date.now()}_${Math.random()}`, 
                     name: itemParts[1].trim(),
                     volume: itemParts[2]?.trim() || undefined,
-                    // Price is not reliably available in this string, will be part of order.totalPrice
-                    price: 0, // Set default or fetch from product list if needed elsewhere
+                    price: 0, 
                     quantity: parseInt(itemParts[3], 10),
                 };
             }
@@ -193,8 +191,6 @@ const rowToOrder = (row): Order | null => {
   const isValidTotalPrice = /^\d+(\.\d+)?$/.test(totalPriceStr);
   
   let timestamp = row[HISTORY_COLUMN_MAP.timestamp];
-  // Check if timestamp is already in 'dd.MM.yyyy HH:mm:ss' format from the sheet
-  // and attempt to parse it into a valid Date object, then to ISO string for internal consistency
   if (typeof timestamp === 'string' && /^\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}:\d{2}$/.test(timestamp)) {
     try {
       const parts = timestamp.split(' ');
@@ -212,11 +208,11 @@ const rowToOrder = (row): Order | null => {
         timestamp = parsedDate.toISOString();
       } else {
         console.warn(`[GSHEET History] Parsed invalid date for order ${row[HISTORY_COLUMN_MAP.orderId]} from sheet timestamp: ${row[HISTORY_COLUMN_MAP.timestamp]}. Using original sheet value.`);
-        timestamp = row[HISTORY_COLUMN_MAP.timestamp]; // Fallback to original if parsing fails or results in invalid date
+        timestamp = row[HISTORY_COLUMN_MAP.timestamp]; 
       }
     } catch (e) {
         console.warn(`[GSHEET History] Could not parse sheet timestamp ${row[HISTORY_COLUMN_MAP.timestamp]} for order ${row[HISTORY_COLUMN_MAP.orderId]}. Using original value. Error:`, e);
-        timestamp = row[HISTORY_COLUMN_MAP.timestamp]; // Fallback
+        timestamp = row[HISTORY_COLUMN_MAP.timestamp]; 
     }
   } else if (typeof timestamp === 'string' && !isValidDate(parseISO(timestamp))) {
       console.warn(`[GSHEET History] Timestamp ${timestamp} for order ${row[HISTORY_COLUMN_MAP.orderId]} is not ISO and not 'dd.MM.yyyy HH:mm:ss'. Using original value.`);
@@ -251,7 +247,6 @@ const orderToRow = (order: Order): string[] => {
   rowValues[HISTORY_COLUMN_MAP.orderId] = order.id;
   
   try {
-    // Order timestamp is expected to be ISO string, format it to 'dd.MM.yyyy HH:mm:ss' for the sheet
     rowValues[HISTORY_COLUMN_MAP.timestamp] = format(parseISO(order.timestamp), 'dd.MM.yyyy HH:mm:ss');
   } catch (e) {
     console.warn(`[GSHEET History] Could not format ISO timestamp ${order.timestamp} for sheet. Using original value. Error:`, e);
@@ -265,7 +260,7 @@ const orderToRow = (order: Order): string[] => {
     }
     itemStr += ` x${item.quantity}`;
     return itemStr;
-  }).join(', '); // Use ", " as separator
+  }).join(', ');
 
   rowValues[HISTORY_COLUMN_MAP.paymentMethod] = order.paymentMethod;
   rowValues[HISTORY_COLUMN_MAP.totalPrice] = String(order.totalPrice).replace('.', ',');
@@ -407,7 +402,7 @@ export const fetchProductsFromSheet = async (): Promise<Product[]> => {
     console.log(`[GSHEET Product] Fetched ${rows.length} rows.`);
     return rows
       .map((row, index) => rowToProduct(row, index))
-      .filter(Boolean) as Product[]; // Type assertion
+      .filter(Boolean) as Product[];
   } catch (error) {
     console.error('[GSHEET Product] Error fetching products:', error?.message || error);
     throw new Error('Failed to fetch products. Check permissions and config.');
@@ -434,7 +429,7 @@ export const addProductToSheet = async (product: Omit<Product, 'id'>): Promise<b
     const existingRowIndex = await findProductRowIndexByNameAndVolume(product.name, product.volume);
     if (existingRowIndex !== null) {
       console.warn(`[GSHEET Product] Product "${product.name}" (${product.volume || 'N/A'}) already exists. Skipping.`);
-      return false; // Indicate product already exists or skip
+      return false; 
     }
 
     await currentSheets.spreadsheets.values.append({
@@ -478,7 +473,6 @@ export const updateProductInSheet = async ({ originalName, originalVolume, newDa
       return false;
     }
 
-    // Check for conflicts if name/volume changes
     if (newData.name !== originalName || (newData.volume ?? '') !== (originalVolume ?? '')) {
       const potentialConflictIndex = await findProductRowIndexByNameAndVolume(newData.name, newData.volume);
       if (potentialConflictIndex !== null && potentialConflictIndex !== rowIndex) {
@@ -542,7 +536,7 @@ export const deleteProductFromSheet = async ({ name, volume }: { name: string, v
             range: {
               sheetId: sheetGid,
               dimension: 'ROWS',
-              startIndex: rowIndex - 1, // Google Sheets API is 0-indexed for batchUpdate ranges
+              startIndex: rowIndex - 1, 
               endIndex: rowIndex,
             },
           },
@@ -608,9 +602,9 @@ export const syncRawProductsToSheet = async () => {
 
     await currentSheets.spreadsheets.values.append({
       spreadsheetId: SHEET_ID,
-      range: PRODUCT_FULL_RANGE_FOR_APPEND, // Append to the end of the sheet
-      valueInputOption: 'USER_ENTERED', // So formulas and number formatting work
-      insertDataOption: 'INSERT_ROWS', // Insert new rows for the data
+      range: PRODUCT_FULL_RANGE_FOR_APPEND, 
+      valueInputOption: 'USER_ENTERED', 
+      insertDataOption: 'INSERT_ROWS', 
       requestBody: {
         values: productsToAdd.map(productToRow),
       },
@@ -668,7 +662,6 @@ export const getUserDataFromSheet = async (login: string): Promise<User | null> 
 
 // Verify password
 export const verifyPassword = async (inputPassword, storedHash) => {
-  // TODO: Replace with actual hashing comparison (e.g., bcrypt.compare)
   console.warn("[Security] Comparing passwords in plain text. IMPLEMENT HASHING!");
   return inputPassword === storedHash;
 };
@@ -718,9 +711,7 @@ export const updateUserInSheet = async (originalLogin: string, updates: Partial<
       return false;
     }
 
-    // Create updated row based on current data, then apply updates
     const updatedRow = [...currentUserDataRow];
-    // Ensure row has enough columns
     while (updatedRow.length < Object.keys(USER_COLUMN_MAP).length) {
       updatedRow.push('');
     }
@@ -733,12 +724,11 @@ export const updateUserInSheet = async (originalLogin: string, updates: Partial<
     if (updates.position !== undefined) updatedRow[USER_COLUMN_MAP.position] = updates.position || '';
     if (updates.iconColor !== undefined) updatedRow[USER_COLUMN_MAP.iconColor] = updates.iconColor || '';
 
-    // Check login conflict if login is being changed
     if (updates.login && updates.login !== originalLogin) {
       const newLoginIndex = await findUserRowIndexByLogin(updates.login);
-      if (newLoginIndex !== null && newLoginIndex !== rowIndex) { // Check if new login exists AND it's not the current user's row
+      if (newLoginIndex !== null && newLoginIndex !== rowIndex) { 
         console.warn(`[GSHEET User] Update conflict: New login "${updates.login}" already exists for another user.`);
-        return false; // Or throw an error to indicate conflict
+        return false;
       }
     }
 
@@ -894,7 +884,7 @@ export const clearAllOrdersFromSheet = async (): Promise<boolean> => {
     
     const sheetGid = await getSheetGid(HISTORY_SHEET_NAME_ONLY);
     if (sheetGid === null) {
-      console.error(`[GSHEET History] Could not determine sheetId for "${HISTORY_SHEET_NAME_ONLY}". Aborting clear operation.`);
+      console.error(`[GSHEET History] Could not determine sheetGid for "${HISTORY_SHEET_NAME_ONLY}". Aborting clear operation.`);
       return false;
     }
     
@@ -909,14 +899,24 @@ export const clearAllOrdersFromSheet = async (): Promise<boolean> => {
 
     if (!totalRows || totalRows <= HISTORY_HEADER_ROW_COUNT) {
         console.log('[GSHEET History] No data rows to clear.');
-        return true;
+        return true; // No data to clear, operation is "successful"
     }
 
-    const rangeToClear = `${HISTORY_SHEET_NAME_ONLY}!A${HISTORY_DATA_START_ROW}:F${totalRows}`;
-    
-    await currentSheets.spreadsheets.values.clear({
-      spreadsheetId: SHEET_ID,
-      range: rangeToClear,
+    // Delete all rows starting from HISTORY_DATA_START_ROW up to the last row
+    await currentSheets.spreadsheets.batchUpdate({
+        spreadsheetId: SHEET_ID,
+        requestBody: {
+            requests: [{
+                deleteDimension: {
+                    range: {
+                        sheetId: sheetGid,
+                        dimension: 'ROWS',
+                        startIndex: HISTORY_DATA_START_ROW - 1, // 0-indexed for batchUpdate
+                        endIndex: totalRows, // endIndex is exclusive, so this covers all rows to the end
+                    },
+                },
+            }],
+        },
     });
     
     console.log(`[GSHEET History] Successfully cleared all orders from sheet "${HISTORY_SHEET_NAME_ONLY}".`);

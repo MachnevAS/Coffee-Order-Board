@@ -38,7 +38,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from '@/lib/utils';
-import { fetchOrdersFromSheet, deleteOrderFromSheet, clearAllOrdersFromSheet } from '@/services/google-sheets-service'; // Import sheet service functions
+import { fetchOrdersFromSheet, deleteOrderFromSheet, clearAllOrdersFromSheet } from '@/services/google-sheets-service';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 const GOOGLE_SHEET_ID = process.env.NEXT_PUBLIC_GOOGLE_SHEET_ID || process.env.GOOGLE_SHEET_ID;
@@ -87,14 +87,13 @@ SortIcon.displayName = 'SortIcon';
 // Helper to parse timestamp for sorting
 const parseTimestampForSort = (timestamp: string): Date | null => {
     if (typeof timestamp === 'string') {
-        // Attempt to parse 'dd.MM.yyyy HH:mm:ss'
         if (/^\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}:\d{2}$/.test(timestamp)) {
             const parts = timestamp.split(' ');
             const dateParts = parts[0].split('.');
             const timeParts = parts[1].split(':');
             const date = new Date(
                 Number(dateParts[2]),
-                Number(dateParts[1]) - 1, // Month is 0-indexed
+                Number(dateParts[1]) - 1, 
                 Number(dateParts[0]),
                 Number(timeParts[0]),
                 Number(timeParts[1]),
@@ -102,7 +101,6 @@ const parseTimestampForSort = (timestamp: string): Date | null => {
             );
             return isValidDate(date) ? date : null;
         }
-        // Attempt to parse ISO string
         const isoDate = parseISO(timestamp);
         return isValidDate(isoDate) ? isoDate : null;
     }
@@ -174,9 +172,9 @@ export function SalesHistory() {
                 if (dateA && dateB) {
                     comparison = dateA.getTime() - dateB.getTime();
                 } else if (dateA) {
-                    comparison = -1; // a comes first if b is invalid
+                    comparison = -1; 
                 } else if (dateB) {
-                    comparison = 1;  // b comes first if a is invalid
+                    comparison = 1;  
                 }
             }
             break;
@@ -243,7 +241,7 @@ export function SalesHistory() {
     const success = await clearAllOrdersFromSheet();
     
     if (success) {
-      await loadOrders(false);
+      await loadOrders(false); // Refresh the list after clearing
       toast({ 
         title: "История очищена", 
         description: "Вся история продаж была удалена из Google Sheets.", 
@@ -292,18 +290,16 @@ export function SalesHistory() {
   }
   
   const formatDisplayDate = (timestamp: string) => {
-    // If it's already in 'dd.MM.yyyy HH:mm:ss', just return it
     if (typeof timestamp === 'string' && /^\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}:\d{2}$/.test(timestamp)) {
       return timestamp;
     }
-    // Otherwise, try to parse as ISO and format
     try {
       const date = parseISO(timestamp);
       if (isValidDate(date)) {
         return format(date, 'dd.MM.yyyy HH:mm:ss', { locale: ru });
       }
     } catch (e) {
-      // Fallback for other string formats or invalid dates
+      // Fallback
     }
     console.warn("Failed to format date for display, returning original:", timestamp);
     return timestamp;
@@ -552,4 +548,3 @@ export function SalesHistory() {
     </Card>
   );
 }
-
