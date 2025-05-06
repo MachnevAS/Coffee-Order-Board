@@ -882,49 +882,44 @@ export const clearAllOrdersFromSheet = async (): Promise<boolean> => {
   try {
     console.log(`[GSHEET History] Clearing all orders from sheet "${HISTORY_SHEET_NAME_ONLY}".`);
     
+    // Получаем id листа
     const sheetGid = await getSheetGid(HISTORY_SHEET_NAME_ONLY);
     if (sheetGid === null) {
-      console.error(`[GSHEET History] Could not determine sheetGid for "${HISTORY_SHEET_NAME_ONLY}". Aborting clear operation.`);
+      console.error(`[GSHEET History] Could not determine sheetId for "${HISTORY_SHEET_NAME_ONLY}". Aborting clear operation.`);
       return false;
     }
     
-    // Get the total number of rows in the sheet to determine the range to clear.
-    // We cannot use clear method for a specific range as it might clear headers if not careful.
-    // Instead, we fetch the sheet's properties to get the total row count.
-    const sheetMetadata = await currentSheets.spreadsheets.get({
-        spreadsheetId: SHEET_ID,
-        ranges: [HISTORY_SHEET_NAME_ONLY], // Specify the sheet name to get its properties
-        fields: 'sheets(properties(gridProperties(rowCount)))',
-    });
-
-    const currentSheetInfo = sheetMetadata.data.sheets?.find((s: any) => s.properties?.title === HISTORY_SHEET_NAME_ONLY);
-    const totalRows = currentSheetInfo?.properties?.gridProperties?.rowCount;
-
-    if (!totalRows || totalRows <= HISTORY_HEADER_ROW_COUNT) {
-        console.log('[GSHEET History] No data rows to clear.');
-        return true; // No data to clear, operation is "successful"
-    }
-
-    // Delete all rows starting from HISTORY_DATA_START_ROW up to the last row
-    // The startIndex for deleteDimension is 0-based.
-    // The endIndex is exclusive.
-    await currentSheets.spreadsheets.batchUpdate({
-        spreadsheetId: SHEET_ID,
-        requestBody: {
-            requests: [{
-                deleteDimension: {
-                    range: {
-                        sheetId: sheetGid,
-                        dimension: 'ROWS',
-                        startIndex: HISTORY_DATA_START_ROW - 1, // e.g. if header is 1 row, data starts at row 2, so startIndex is 1
-                        endIndex: totalRows, // endIndex is exclusive, so this covers all rows to the end
-                    },
-                },
-            }],
-        },
+    // Получаем количество строк в таблице
+    const response = await currentSheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: `${HISTORY_SHEET_NAME_ONLY}!A:A`,
     });
     
-    console.log(`[GSHEET History] Successfully cleared all orders from sheet "${HISTORY_SHEET_NAME_ONLY}".`);
+    const rows = response.data.values;
+    if (!rows || rows.length <= HISTORY_HEADER_ROW_COUNT) {
+      console.log('[GSHEET History] No data rows to clear.');
+      return true;
+    }
+    
+    // Создаем запрос на удаление всех строк, кроме заголовка
+    // Используем batchUpdate с одним большим запросом вместо множества маленьких
+    await currentSheets.spreadsheets.batchUpdate({
+      spreadsheetId: SHEET_ID,
+      requestBody: {
+        requests: [{
+          deleteDimension: {
+            range: {
+              sheetId: sheetGid,
+              dimension: 'ROWS',
+              startIndex: HISTORY_HEADER_ROW_COUNT, // Начинаем со строки сразу после заголовка (индекс 0-based)
+              endIndex: rows.length // Удаляем до последней строки
+            }
+          }
+        }]
+      }
+    });
+    
+    console.log(`[GSHEET History] Successfully deleted all order rows from sheet "${HISTORY_SHEET_NAME_ONLY}".`);
     return true;
   } catch (error: any) {
     console.error(`[GSHEET History] Error clearing all orders:`, error?.message || error);
@@ -932,4 +927,59 @@ export const clearAllOrdersFromSheet = async (): Promise<boolean> => {
   }
 };
 
+// Clear all products from price sheet (leaves header row)
+export const clearAllProductsFromSheet = async (): Promise<boolean> => {
+  const currentSheets = getSheetsClient();
+  if (!currentSheets) return false;
+
+  if (!(SERVICE_ACCOUNT_EMAIL && PRIVATE_KEY)) {
+    console.error('[GSHEET Product] Clear all operation requires Service Account credentials.');
+    return false;
+  }
+
+  try {
+    console.log(`[GSHEET Product] Clearing all products from sheet "${PRODUCT_SHEET_NAME_ONLY}".`);
     
+    // Получаем id листа
+    const sheetGid = await getSheetGid(PRODUCT_SHEET_NAME_ONLY);
+    if (sheetGid === null) {
+      console.error(`[GSHEET Product] Could not determine sheetId for "${PRODUCT_SHEET_NAME_ONLY}". Aborting clear operation.`);
+      return false;
+    }
+    
+    // Получаем количество строк в таблице
+    const response = await currentSheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: `${PRODUCT_SHEET_NAME_ONLY}!A:A`,
+    });
+    
+    const rows = response.data.values;
+    if (!rows || rows.length <= PRODUCT_HEADER_ROW_COUNT) {
+      console.log('[GSHEET Product] No data rows to clear.');
+      return true;
+    }
+    
+    // Создаем запрос на удаление всех строк, кроме заголовка
+    await currentSheets.spreadsheets.batchUpdate({
+      spreadsheetId: SHEET_ID,
+      requestBody: {
+        requests: [{
+          deleteDimension: {
+            range: {
+              sheetId: sheetGid,
+              dimension: 'ROWS',
+              startIndex: PRODUCT_HEADER_ROW_COUNT, // Начинаем со строки сразу после заголовка (индекс 0-based)
+              endIndex: rows.length // Удаляем до последней строки
+            }
+          }
+        }]
+      }
+    });
+    
+    console.log(`[GSHEET Product] Successfully deleted all product rows from sheet "${PRODUCT_SHEET_NAME_ONLY}".`);
+    return true;
+  } catch (error: any) {
+    console.error(`[GSHEET Product] Error clearing all products:`, error?.message || error);
+    return false;
+  }
+};

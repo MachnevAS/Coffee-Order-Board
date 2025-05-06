@@ -54,8 +54,9 @@ import {
   addProductToSheet,
   updateProductInSheet,
   deleteProductFromSheet,
+  clearAllProductsFromSheet, // Добавить эту строку
   syncRawProductsToSheet,
-  fetchOrdersFromSheet as fetchAllOrdersForPopularity // Import for popularity
+  fetchOrdersFromSheet as fetchAllOrdersForPopularity
 } from '@/services/google-sheets-service';
 import { useDebounce } from '@/hooks/use-debounce';
 
@@ -499,31 +500,16 @@ export function ProductManagement() {
 
   const clearAllProducts = useCallback(async () => {
     if (products.length === 0 || isLoading || isSubmitting) return;
-
+  
     setIsClearAllDialogOpen(false);
-    setIsSubmitting(true); // Use isSubmitting for this operation as well
-
-    let allDeleted = true;
-    // It's better to delete one by one if the backend doesn't support bulk delete
-    // or to avoid potential issues with large batch operations.
-    // For simplicity, we'll assume `deleteProductFromSheet` handles one at a time.
-    // A more robust solution might involve a dedicated `clearAllProductsInSheet` function.
-    for (const product of products) { // Iterate over a copy
-      const success = await deleteProductFromSheet({ 
-        name: product.name, 
-        volume: product.volume 
-      });
-      if (!success) {
-        allDeleted = false;
-        // Optionally, stop or collect failed deletions
-        // For now, we'll just report if any failed
-      }
-    }
+    setIsSubmitting(true);
+  
+    const success = await clearAllProductsFromSheet();
     
     await loadProducts(false); // Reload products from sheet
     setPopularityVersion(v => v + 1); // Update popularity
-
-    if (allDeleted) {
+  
+    if (success) {
       toast({ 
         title: "Все товары удалены", 
         description: "Список товаров был очищен из Google Sheet.", 
@@ -532,7 +518,7 @@ export function ProductManagement() {
     } else {
       toast({
         title: "Ошибка очистки",
-        description: `Не все товары удалось удалить. Пожалуйста, проверьте Google Sheet.`,
+        description: `Не удалось очистить список товаров. Пожалуйста, проверьте Google Sheet.`,
         variant: "destructive"
       });
     }
@@ -687,25 +673,27 @@ export function ProductManagement() {
             Существующие товары ({isLoading && products.length === 0 ? '...' : products.length})
           </CardTitle>
           <div className="flex gap-2">
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button 
-                    variant="outline" 
-                    size="icon" 
-                    onClick={handleSyncRawProducts} 
-                    className="h-8 w-8" 
-                    disabled={isLoading || isSubmitting}
-                  >
-                    <FilePlus2 className="h-4 w-4" />
-                    <span className="sr-only">Загрузить пример товаров</span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Загрузить пример товаров в Google Sheet (пропустит существующие)</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+          {products.length === 0 && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      variant="outline" 
+                      size="icon" 
+                      onClick={handleSyncRawProducts} 
+                      className="h-8 w-8" 
+                      disabled={isLoading || isSubmitting}
+                    >
+                      <FilePlus2 className="h-4 w-4" />
+                      <span className="sr-only">Загрузить пример товаров</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Загрузить пример товаров в Google Sheet (пропустит существующие)</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
             
             <AlertDialog open={isClearAllDialogOpen} onOpenChange={setIsClearAllDialogOpen}>
               <TooltipProvider>
