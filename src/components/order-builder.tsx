@@ -487,7 +487,7 @@ export function OrderBuilder() {
       const success = await addOrderToSheet(orderData); // Save to Google Sheet
 
       if (success) {
-        setPopularityVersion(v => v + 1); // Trigger popularity recalculation
+        // setPopularityVersion(v => v + 1); // Removed: Do not trigger popularity recalculation / product list refresh
         toast({ title: "Заказ оформлен!", description: `Итого: ${totalPrice.toFixed(0)} ₽ (${selectedPaymentMethod}). Ваш заказ сохранен в Google Sheets.` });
         clearOrder();
         setIsSheetOpen(false);
@@ -663,3 +663,4 @@ export function OrderBuilder() {
     </div>
   );
 }
+
