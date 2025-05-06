@@ -9,10 +9,12 @@ import { useToast } from '@/hooks/use-toast'; // Import useToast
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
+  showPasswordChangeWarning: boolean; // Added
   login: (login: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
   updateUser: (updates: Partial<User>) => Promise<boolean>;
   verifyAndChangePassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
+  clearPasswordChangeWarning: () => void; // Added
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -20,9 +22,10 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [showPasswordChangeWarning, setShowPasswordChangeWarning] = useState(false); // Added state
   const router = useRouter();
   const pathname = usePathname();
-  const { toast } = useToast(); // Initialize toast
+  const { toast } = useToast();
 
   const fetchUser = useCallback(async (isInitialLoad = false) => {
     if (isInitialLoad) setIsLoading(true);
@@ -33,14 +36,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (res.ok && data.user) {
         setUser(data.user);
+        // Check for password warning status from user data if available,
+        // or retain existing warning if not (e.g., if user object doesn't explicitly carry this state from backend)
+        // This logic might need adjustment based on how backend sends warning status persistently
+        if (typeof data.showPasswordChangeWarning === 'boolean') {
+            setShowPasswordChangeWarning(data.showPasswordChangeWarning);
+        }
         console.log("[AuthContext] User fetched successfully:", data.user.login);
       } else {
         setUser(null);
+        setShowPasswordChangeWarning(false);
         console.log("[AuthContext] No active session found or error fetching user:", res.status, data.error);
       }
     } catch (error) {
       console.error('[AuthContext] Error fetching user:', error);
       setUser(null);
+      setShowPasswordChangeWarning(false);
     } finally {
       if (isInitialLoad) setIsLoading(false);
       console.log("[AuthContext] Finished fetching user. Loading:", isLoading);
@@ -54,6 +65,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const login = useCallback(async (loginInput: string, passwordInput: string): Promise<boolean> => {
     setIsLoading(true);
+    setShowPasswordChangeWarning(false); // Reset warning on new login attempt
     console.log(`[AuthContext] Attempting login for: ${loginInput}`);
     try {
       const res = await fetch('/api/auth/login', {
@@ -66,15 +78,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (res.ok && data.user) {
         setUser(data.user);
-        console.log("[AuthContext] Login successful:", data.user.login);
         if (data.showPasswordChangeWarning) {
-          toast({
-            title: 'Рекомендация по безопасности',
-            description: 'Ваш пароль хранится в небезопасном формате. Пожалуйста, смените его в настройках профиля.',
-            variant: 'destructive', // Or a custom warning variant
-            duration: 10000, // Show for longer
-          });
+          setShowPasswordChangeWarning(true); // Set warning from API response
+          // Toast is now shown on the page itself via an Alert component
         }
+        console.log("[AuthContext] Login successful:", data.user.login);
         return true;
       } else {
         console.log("[AuthContext] Login failed:", res.status, data.error || 'No error message from API');
@@ -89,7 +97,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setIsLoading(false);
       console.log("[AuthContext] Login attempt finished.");
     }
-  }, [toast]); // Added toast as a dependency
+  }, []);
 
   const logout = useCallback(async () => {
     setIsLoading(true);
@@ -101,11 +109,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       console.error('[AuthContext] Logout API error:', error);
     } finally {
       setUser(null);
+      setShowPasswordChangeWarning(false); // Clear warning on logout
       console.log("[AuthContext] Client-side user state cleared.");
-      router.push('/login');
-      router.refresh();
+      // router.push('/login'); // Middleware will handle redirect
+      // router.refresh(); // Middleware will handle redirect
       setIsLoading(false);
-      console.log("[AuthContext] Logout process complete.");
+      console.log("[AuthContext] Logout process complete. User should be redirected by middleware.");
     }
   }, [router]);
 
@@ -158,6 +167,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (res.ok) {
         console.log("[AuthContext] Password change successful for:", user.login);
+        setShowPasswordChangeWarning(false); // Clear warning after successful password change
         return true;
       } else {
         console.error("[AuthContext] Password change failed:", res.status, data.error || 'No error message from API');
@@ -172,6 +182,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [user]);
 
+  const clearPasswordChangeWarning = useCallback(() => {
+    setShowPasswordChangeWarning(false);
+  }, []);
+
 
   useEffect(() => {
     console.log("[AuthContext] User state changed:", user?.login ?? 'null');
@@ -182,7 +196,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [isLoading]);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout, updateUser, verifyAndChangePassword }}>
+    <AuthContext.Provider value={{ user, isLoading, showPasswordChangeWarning, login, logout, updateUser, verifyAndChangePassword, clearPasswordChangeWarning }}>
       {children}
     </AuthContext.Provider>
   );
@@ -195,3 +209,4 @@ export const useAuth = (): AuthContextType => {
   }
   return context;
 };
+
