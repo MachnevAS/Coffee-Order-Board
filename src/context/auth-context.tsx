@@ -10,6 +10,7 @@ interface AuthContextType {
   login: (login: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
   updateUser: (updates: Partial<User>) => Promise<boolean>;
+  verifyAndChangePassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -34,36 +35,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } else {
         setUser(null);
         console.log("[AuthContext] No active session found or error fetching user:", res.status, data.error);
-        // Redirect if on a protected page and no user is found (except during initial load check)
-        // Middleware should primarily handle this, but added as a safety net
-        // if (!isInitialLoad && pathname !== '/login') { // Check if not already on login
-        //   console.log("[AuthContext] Redirecting to /login due to missing user session.");
-        //   router.push('/login');
-        // }
       }
     } catch (error) {
       console.error('[AuthContext] Error fetching user:', error);
-      setUser(null); // Ensure user is null on error
-      // Redirect on fetch error if on a protected page
-      // if (!isInitialLoad && pathname !== '/login') {
-      //    console.log("[AuthContext] Redirecting to /login due to fetch error.");
-      //    router.push('/login');
-      // }
+      setUser(null); 
     } finally {
-      // Only set loading false after the initial check completes
       if (isInitialLoad) setIsLoading(false);
-      console.log("[AuthContext] Finished fetching user. Loading:", isLoading); // Log final loading state
+      console.log("[AuthContext] Finished fetching user. Loading:", isLoading); 
     }
-  }, [router, pathname, isLoading]); // Include isLoading in dependency array for logging
+  }, [router, pathname, isLoading]); 
 
-  // Fetch user on initial load only
   useEffect(() => {
-    fetchUser(true); // Pass true for initial load
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Empty dependency array ensures this runs only once on mount
+    fetchUser(true); 
+    // eslint-disable-next-line react-hooks-exhaustive-deps
+  }, []); 
 
   const login = useCallback(async (loginInput: string, passwordInput: string): Promise<boolean> => {
-    setIsLoading(true); // Set loading during login attempt
+    setIsLoading(true); 
     console.log(`[AuthContext] Attempting login for: ${loginInput}`);
     try {
       const res = await fetch('/api/auth/login', {
@@ -72,12 +60,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         body: JSON.stringify({ login: loginInput, password: passwordInput }),
       });
 
-      const data = await res.json(); // Parse JSON regardless of status
+      const data = await res.json(); 
 
       if (res.ok && data.user) {
         setUser(data.user);
         console.log("[AuthContext] Login successful:", data.user.login);
-        // No router.push here, let the LoginPage handle redirection after successful login state update
         return true;
       } else {
         console.log("[AuthContext] Login failed:", res.status, data.error || 'No error message from API');
@@ -89,13 +76,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setUser(null);
       return false;
     } finally {
-      setIsLoading(false); // Stop loading after login attempt completes
+      setIsLoading(false); 
       console.log("[AuthContext] Login attempt finished.");
     }
-  }, []); // No router dependency needed here
+  }, []); 
 
   const logout = useCallback(async () => {
-    setIsLoading(true); // Indicate loading during logout
+    setIsLoading(true); 
     console.log("[AuthContext] Initiating logout...");
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
@@ -103,14 +90,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } catch (error) {
       console.error('[AuthContext] Logout API error:', error);
     } finally {
-      setUser(null); // Clear user state immediately
+      setUser(null); 
       console.log("[AuthContext] Client-side user state cleared.");
-      // Redirect is handled by middleware now, no need to push here
-      // router.push('/login');
-      setIsLoading(false); // Stop loading
+      router.push('/login'); // Redirect to login page after logout
+      router.refresh(); // Force refresh
+      setIsLoading(false); 
       console.log("[AuthContext] Logout process complete.");
     }
-  }, []); // Removed router dependency
+  }, [router]); 
 
  const updateUser = useCallback(async (updates: Partial<User>): Promise<boolean> => {
     if (!user) {
@@ -125,41 +112,69 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(updates),
         });
-        const data = await res.json(); // Always parse JSON
+        const data = await res.json(); 
 
         if (res.ok && data.user) {
-            setUser(data.user);
+            setUser(data.user); // Update local user state
             console.log("[AuthContext] User update successful:", data.user.login);
             return true;
         } else {
             console.error("[AuthContext] User update failed:", res.status, data.error || 'No error message from API');
-            // Optionally fetch user again to ensure sync if update fails - might cause loop if fetch also fails
-            // await fetchUser();
             return false;
         }
     } catch (error) {
         console.error('[AuthContext] Update user API error:', error);
-        // await fetchUser(); // Re-sync on error
         return false;
     } finally {
         setIsLoading(false);
         console.log("[AuthContext] User update attempt finished.");
     }
- }, [user]); // fetchUser removed to prevent potential loops
+ }, [user]);
+
+  const verifyAndChangePassword = useCallback(async (currentPassword: string, newPassword: string): Promise<boolean> => {
+    if (!user) {
+      console.warn("[AuthContext] Attempted to change password while not logged in.");
+      return false;
+    }
+    setIsLoading(true);
+    console.log(`[AuthContext] Attempting to change password for user: ${user.login}`);
+    try {
+      const res = await fetch('/api/auth/change-password', { // New API endpoint
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        console.log("[AuthContext] Password change successful for:", user.login);
+        // Optionally re-fetch user if password change affects other user data or session
+        // await fetchUser(); 
+        return true;
+      } else {
+        console.error("[AuthContext] Password change failed:", res.status, data.error || 'No error message from API');
+        throw new Error(data.error || 'Не удалось изменить пароль.'); // Throw error to be caught by ProfileModal
+      }
+    } catch (error: any) {
+      console.error('[AuthContext] Change password API error:', error);
+      throw error; // Re-throw to be caught by ProfileModal
+    } finally {
+      setIsLoading(false);
+      console.log("[AuthContext] Password change attempt finished.");
+    }
+  }, [user]);
 
 
-  // Log user state changes for debugging
   useEffect(() => {
     console.log("[AuthContext] User state changed:", user?.login ?? 'null');
   }, [user]);
 
-  // Log loading state changes for debugging
   useEffect(() => {
     console.log("[AuthContext] Loading state changed:", isLoading);
   }, [isLoading]);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, isLoading, login, logout, updateUser, verifyAndChangePassword }}>
       {children}
     </AuthContext.Provider>
   );

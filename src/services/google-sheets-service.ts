@@ -143,7 +143,7 @@ const rowToUser = (row: any[]): User | null => {
         middleName: row[USER_COLUMN_MAP.middleName] || undefined,
         lastName: row[USER_COLUMN_MAP.lastName] || undefined,
         position: row[USER_COLUMN_MAP.position] || undefined,
-        iconColor: isValidColor ? iconColorRaw : undefined,
+        iconColor: isValidColor ? iconColorRaw : (iconColorRaw === '' ? undefined : iconColorRaw), // Handle empty string as undefined
     };
 };
 
@@ -573,7 +573,7 @@ const findUserRowIndexByLogin = async (login: string): Promise<number | null> =>
     return findRowIndexByColumnValue(USERS_SHEET_NAME_ONLY!, USER_COLUMN_MAP.login, login, USER_DATA_START_ROW);
 };
 
-export const updateUserInSheet = async (login: string, updates: Partial<User>): Promise<boolean> => {
+export const updateUserInSheet = async (originalLogin: string, updates: Partial<User>): Promise<boolean> => {
     const currentSheets = getSheetsClient();
     if (!currentSheets) return false;
 
@@ -581,43 +581,60 @@ export const updateUserInSheet = async (login: string, updates: Partial<User>): 
         console.error('[GSHEET User] Update operation requires Service Account credentials.');
         return false;
     }
-    if (!login) {
-        console.error('[GSHEET User] Login missing for update operation.');
+    if (!originalLogin) {
+        console.error('[GSHEET User] Original login missing for update operation.');
         return false;
     }
 
     try {
-        console.log(`[GSHEET User] Attempting to update user: "${login}"`);
-        const rowIndex = await findUserRowIndexByLogin(login);
+        console.log(`[GSHEET User] Attempting to update user originally named: "${originalLogin}"`);
+        const rowIndex = await findUserRowIndexByLogin(originalLogin);
         if (rowIndex === null) {
-            console.error(`[GSHEET User] User with login "${login}" not found for update.`);
+            console.error(`[GSHEET User] User with original login "${originalLogin}" not found for update.`);
             return false;
         }
 
         const userRowRange = `${USERS_SHEET_NAME_ONLY}!A${rowIndex}:H${rowIndex}`;
-        const currentUserDataRow = (await currentSheets.spreadsheets.values.get({
+        // Fetch the current row data to merge updates
+        const currentUserDataRowResponse = await currentSheets.spreadsheets.values.get({
             spreadsheetId: SHEET_ID!,
             range: userRowRange,
-        })).data.values?.[0];
+        });
+        const currentUserDataRow = currentUserDataRowResponse.data.values?.[0];
 
         if (!currentUserDataRow) {
-             console.error(`[GSHEET User] Could not fetch current data for user "${login}" at row ${rowIndex}.`);
+             console.error(`[GSHEET User] Could not fetch current data for user "${originalLogin}" at row ${rowIndex}.`);
              return false;
         }
 
-        const updatedRow: any[] = Array(Object.keys(USER_COLUMN_MAP).length).fill('');
+        // Create a new row array and populate with existing data
+        const updatedRow: any[] = Array(Object.keys(USER_COLUMN_MAP).length).fill(null);
         currentUserDataRow.forEach((value, index) => {
-            if (index < updatedRow.length) updatedRow[index] = value ?? '';
+            if (index < updatedRow.length) updatedRow[index] = value ?? ''; // Default to empty string if cell is truly empty or null
         });
 
-        // Apply allowed updates
+
+        // Apply updates
+        if (updates.login !== undefined) updatedRow[USER_COLUMN_MAP.login] = updates.login;
+        if (updates.passwordHash !== undefined) updatedRow[USER_COLUMN_MAP.passwordHash] = updates.passwordHash;
         if (updates.firstName !== undefined) updatedRow[USER_COLUMN_MAP.firstName] = updates.firstName || '';
         if (updates.middleName !== undefined) updatedRow[USER_COLUMN_MAP.middleName] = updates.middleName || '';
         if (updates.lastName !== undefined) updatedRow[USER_COLUMN_MAP.lastName] = updates.lastName || '';
-        // IMPORTANT: Add password update logic here securely if implemented
-        // if (updates.passwordHash !== undefined) updatedRow[USER_COLUMN_MAP.passwordHash] = updates.passwordHash;
+        if (updates.position !== undefined) updatedRow[USER_COLUMN_MAP.position] = updates.position || '';
+        if (updates.iconColor !== undefined) updatedRow[USER_COLUMN_MAP.iconColor] = updates.iconColor || '';
 
-        console.log(`[GSHEET User] Updating row ${rowIndex} for user "${login}"`); // Don't log updatedRow with potential sensitive data
+
+        // If login is being changed, ensure the new login isn't already taken by another user
+        if (updates.login && updates.login !== originalLogin) {
+            const newLoginIndex = await findUserRowIndexByLogin(updates.login);
+            if (newLoginIndex !== null && newLoginIndex !== rowIndex) {
+                console.warn(`[GSHEET User] Update conflict: New login "${updates.login}" already exists for another user at row ${newLoginIndex}. Aborting update.`);
+                return false;
+            }
+        }
+
+
+        console.log(`[GSHEET User] Updating row ${rowIndex} for user originally "${originalLogin}", new login (if changed) "${updates.login || originalLogin}"`);
         await currentSheets.spreadsheets.values.update({
             spreadsheetId: SHEET_ID!,
             range: userRowRange,
@@ -627,11 +644,19 @@ export const updateUserInSheet = async (login: string, updates: Partial<User>): 
             },
         });
 
-        console.log(`[GSHEET User] Successfully updated user "${login}" at row ${rowIndex}`);
+        console.log(`[GSHEET User] Successfully updated user at row ${rowIndex}`);
         return true;
     } catch (error: any) {
-        console.error(`[GSHEET User] Error updating user "${login}" in Google Sheet:`, error?.message || error);
+        console.error(`[GSHEET User] Error updating user "${originalLogin}" in Google Sheet:`, error?.message || error);
         console.error("[GSHEET User] Check Service Account permissions and Sheet sharing settings.");
         return false;
     }
 };
+
+// Placeholder for password hashing - IMPLEMENT SECURELY
+// import bcrypt from 'bcryptjs';
+// export const hashPassword = async (password: string): Promise<string> => {
+//   console.warn("[Security] Hashing password with bcrypt. Ensure bcryptjs is installed.");
+//   const salt = await bcrypt.genSalt(10);
+//   return bcrypt.hash(password, salt);
+// };

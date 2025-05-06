@@ -21,22 +21,24 @@ export async function GET() {
 
 export async function PUT(request: Request) {
   try {
-    const sessionData = await session(); // Await the session
-    const currentUser = sessionData.user; // Access user after awaiting
+    const sessionData = await session(); 
+    const currentUserSession = sessionData.user; 
 
-    if (!currentUser) {
+    if (!currentUserSession) {
       return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
     }
 
     const updates: Partial<User> = await request.json();
 
-    // Validate updates (ensure critical fields like ID/login are not changed arbitrarily)
+    // Validate updates (ensure critical fields like ID are not changed arbitrarily)
+    // Allow login, FIO, position, iconColor to be updated. Password change is a separate endpoint.
     const allowedUpdates: Partial<User> = {
-        firstName: updates.firstName || undefined, // Use undefined if empty string
+        login: updates.login || undefined, // login can be updated
+        firstName: updates.firstName || undefined, 
         middleName: updates.middleName || undefined,
         lastName: updates.lastName || undefined,
-        // Potentially allow password updates here if implementing password change
-        // iconColor: updates.iconColor, // Maybe allow color change?
+        position: updates.position || undefined,
+        iconColor: updates.iconColor || undefined,
     };
 
     // Filter out undefined values before sending to sheet service
@@ -48,27 +50,31 @@ export async function PUT(request: Request) {
     }, {} as Partial<User>);
 
     // Update the user data in Google Sheet
+    // Pass the original login from the session to identify the user in the sheet,
+    // as the login itself might be part of the updates.
     if (Object.keys(validUpdates).length > 0) {
-        console.log(`[API User PUT] Updating user ${currentUser.login} in sheet with:`, validUpdates);
-        const updateSuccess = await updateUserInSheet(currentUser.login, validUpdates);
+        console.log(`[API User PUT] Updating user (original login: ${currentUserSession.login}) in sheet with:`, validUpdates);
+        const updateSuccess = await updateUserInSheet(currentUserSession.login, validUpdates);
 
         if (!updateSuccess) {
-            console.error(`[API User PUT] Failed to update user ${currentUser.login} in Google Sheet.`);
+            console.error(`[API User PUT] Failed to update user ${currentUserSession.login} in Google Sheet.`);
             return NextResponse.json({ error: 'Не удалось обновить данные пользователя в таблице' }, { status: 500 });
         }
-        console.log(`[API User PUT] Successfully updated user ${currentUser.login} in Google Sheet.`);
+        console.log(`[API User PUT] Successfully updated user ${currentUserSession.login} in Google Sheet.`);
     } else {
-         console.log(`[API User PUT] No valid updates provided for user ${currentUser.login}. Skipping sheet update.`);
+         console.log(`[API User PUT] No valid updates provided for user ${currentUserSession.login}. Skipping sheet update.`);
     }
 
 
     // Update the session data
-    const updatedUser = { ...currentUser, ...allowedUpdates }; // Apply updates (including potential undefined) locally
-    sessionData.user = updatedUser;
+    // Important: The ID from the original session user should be preserved if it's not part of 'validUpdates'
+    // and if your User type in session relies on a persistent ID.
+    const updatedUserInSession = { ...currentUserSession, ...validUpdates };
+    sessionData.user = updatedUserInSession;
     await sessionData.save();
-    console.log(`[API User PUT] Session updated for user ${currentUser.login}.`);
+    console.log(`[API User PUT] Session updated for user (new login if changed: ${updatedUserInSession.login}).`);
 
-    return NextResponse.json({ user: updatedUser });
+    return NextResponse.json({ user: updatedUserInSession });
 
   } catch (error) {
     console.error('[API User PUT] Error updating user:', error);
