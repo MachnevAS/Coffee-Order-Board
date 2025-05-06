@@ -34,7 +34,7 @@ const profileSchema = z.object({
   iconColor: z.string()
     .regex(/^#([0-9A-Fa-f]{3,4}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$/, "Неверный HEX цвет (например, #RRGGBB, #RGB, #RRGGBBAA, #RGBA)")
     .optional()
-    .or(z.literal('')), 
+    .or(z.literal('')),
   currentPassword: z.string().optional().or(z.literal('')),
   newPassword: z.string()
     .min(6, 'Новый пароль должен быть не менее 6 символов')
@@ -111,19 +111,23 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
           middleName: user.middleName || '',
           lastName: user.lastName || '',
           position: user.position || '',
-          iconColor: user.iconColor || '#cccccc', 
+          iconColor: user.iconColor || '#cccccc',
           currentPassword: '',
           newPassword: '',
           confirmNewPassword: '',
         });
-        setError(null); 
-        form.clearErrors(); 
+        setError(null);
+        form.clearErrors();
         setFormInitializedForUserId(user.id);
       }
     } else if (!isOpen) {
+      // If the modal is closed, reset the formInitializedForUserId so that
+      // if it's reopened for the SAME user, it still re-initializes from fresh user data
+      // (in case user data was updated elsewhere, or just to ensure clean state)
       setFormInitializedForUserId(null);
     }
-  }, [user, isOpen, formInitializedForUserId, form.reset, form.clearErrors]); // Removed form from dependencies
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, isOpen, formInitializedForUserId]);
 
   const onSubmit = async (data: ProfileFormValues) => {
     setError(null);
@@ -134,17 +138,17 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
     let passwordChangeSuccess = true;
 
     const profileUpdates: Partial<User> = {
-      login: data.login, 
+      login: data.login,
       firstName: data.firstName || undefined,
       middleName: data.middleName || undefined,
       lastName: data.lastName || undefined,
       position: data.position || undefined,
-      iconColor: data.iconColor || undefined, 
+      iconColor: data.iconColor || undefined,
     };
 
     const changedProfileUpdates = Object.entries(profileUpdates).reduce((acc, [key, value]) => {
         // Check if the user object exists and if the value has actually changed
-        if (user && (user[key as keyof User] !== value && 
+        if (user && (user[key as keyof User] !== value &&
                      !(user[key as keyof User] === undefined && (value === '' || value === undefined)) &&
                      !(user[key as keyof User] === '' && value === undefined)
                     )
@@ -199,8 +203,8 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
         } catch (err: any) {
           passwordChangeSuccess = false;
           const message = err.response?.data?.error || err.message || 'Произошла ошибка при смене пароля.';
-          setError(message); 
-           if (message.toLowerCase().includes("текущий пароль")) {
+          setError(message);
+          if (message.toLowerCase().includes("текущий пароль")) {
                 form.setError("currentPassword", {type: "manual", message});
             } else if (message.toLowerCase().includes("новый пароль")){
                 form.setError("newPassword", {type: "manual", message});
@@ -218,7 +222,7 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
 
     if (noProfileChangesAttempted && noPasswordChangeAttempted) {
         // If no changes were made and no password change was attempted, just close.
-        if (profileUpdateSuccess && passwordChangeSuccess) setIsOpen(false); 
+        if (profileUpdateSuccess && passwordChangeSuccess) setIsOpen(false);
         return;
     }
 
@@ -248,7 +252,7 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => {
-      if (!isLoading) setIsOpen(open); 
+      if (!isLoading) setIsOpen(open);
     }}>
       <DialogContent className={cn("sm:max-w-md p-4 sm:p-6 w-[90vw] sm:w-full", isOpen ? "max-h-[90vh] overflow-y-auto" : "")}>
         <DialogHeader>
@@ -258,7 +262,7 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4 py-4">
-          
+
           <div className="grid gap-1.5">
             <Label htmlFor="login">Логин</Label>
             <Input id="login" {...form.register('login')} disabled={isLoading} />
@@ -294,20 +298,20 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
               <Label htmlFor="iconColor" className="flex items-center">
                 <Palette className="h-4 w-4 mr-1 inline-block" /> Цвет иконки
               </Label>
-              <Input 
-                id="iconColor" 
-                type="color" 
-                {...form.register('iconColor')} 
-                disabled={isLoading} 
+              <Input
+                id="iconColor"
+                type="color"
+                {...form.register('iconColor')}
+                disabled={isLoading}
                 className="h-10 w-full sm:w-14 p-1"
               />
               {form.formState.errors.iconColor && <p className="text-xs text-destructive">{form.formState.errors.iconColor.message}</p>}
             </div>
           </div>
 
-          <Separator className="my-4" /> 
+          <Separator className="my-4" />
           <p className="text-sm text-muted-foreground">Изменить пароль (оставьте пустыми, если не хотите менять)</p>
-          
+
           <div className="grid gap-1.5">
             <Label htmlFor="currentPassword">Текущий пароль</Label>
             <Input id="currentPassword" type="password" {...form.register('currentPassword')} disabled={isLoading} autoComplete="current-password" />
@@ -326,7 +330,7 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
                 {form.formState.errors.confirmNewPassword && <p className="text-xs text-destructive">{form.formState.errors.confirmNewPassword.message}</p>}
             </div>
           </div>
-          
+
           {error && !form.formState.errors.login && !form.formState.errors.currentPassword && !form.formState.errors.newPassword && !form.formState.errors.confirmNewPassword && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
@@ -335,7 +339,7 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
             </Alert>
           )}
 
-          <DialogFooter className="pt-4 flex-col sm:flex-row gap-2 sm:gap-0"> 
+          <DialogFooter className="pt-4 flex-col sm:flex-row gap-2 sm:gap-0">
             <DialogClose asChild>
               <Button type="button" variant="outline" disabled={isLoading} className="w-full sm:w-auto">
                 Отмена
