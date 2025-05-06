@@ -4,7 +4,10 @@ import { getUserDataFromSheet, verifyPassword } from '@/services/google-sheets-s
 import { session } from '@/lib/session';
 import type { User } from '@/types/user'; // Ensure User type is defined
 
-const ENCRYPTION_TAG = "encryption";
+const XOR_TAG = "ENC_XOR"; // For checking old XOR passwords
+const BCRYPT_PREFIX_1 = "$2a$";
+const BCRYPT_PREFIX_2 = "$2b$";
+
 
 export async function POST(request: Request) {
   try {
@@ -21,10 +24,10 @@ export async function POST(request: Request) {
       console.log(`[API Login] User not found or missing password hash for login: ${login}. UserData: ${JSON.stringify(userData)}`);
       return NextResponse.json({ error: 'Неверный логин или пароль' }, { status: 401 });
     }
-    console.log(`[API Login] Found user data for login: ${login}. Stored passwordHash: "${userData.passwordHash}"`);
+    console.log(`[API Login] Found user data for login: ${login}. Stored passwordHash: "${userData.passwordHash.substring(0,10)}..."`);
 
 
-    // Verify password using the function (even if it's plain text for now)
+    // Verify password using the new universal verifyPassword function
     const passwordMatches = await verifyPassword(password, userData.passwordHash);
     
     if (!passwordMatches) {
@@ -44,11 +47,16 @@ export async function POST(request: Request) {
       // Exclude passwordHash from session
     };
 
-    const currentSession = await session(); // Await the session
-    currentSession.user = userSessionData; // Set the user data
-    await currentSession.save(); // Save the session
+    const currentSession = await session(); 
+    currentSession.user = userSessionData; 
+    await currentSession.save(); 
 
-    const showPasswordChangeWarning = typeof userData.passwordHash === 'string' && !userData.passwordHash.startsWith(ENCRYPTION_TAG);
+    // Determine if password change warning is needed
+    // Warning if it's plain text (not starting with bcrypt prefixes) OR old XOR_TAG
+    const isBcryptHash = typeof userData.passwordHash === 'string' && (userData.passwordHash.startsWith(BCRYPT_PREFIX_1) || userData.passwordHash.startsWith(BCRYPT_PREFIX_2));
+    const isOldXorHash = typeof userData.passwordHash === 'string' && userData.passwordHash.startsWith(XOR_TAG);
+    const showPasswordChangeWarning = !isBcryptHash || isOldXorHash;
+
 
     console.log(`[API Login] Successful login for user: ${login}, session saved. Password warning: ${showPasswordChangeWarning}`);
     return NextResponse.json({ user: userSessionData, showPasswordChangeWarning });

@@ -8,6 +8,7 @@
  */
 import { google } from 'googleapis';
 import { GoogleAuth } from 'google-auth-library';
+import bcrypt from 'bcrypt';
 import type { Product } from '@/types/product';
 import type { User } from '@/types/user';
 import type { Order, SalesHistoryItem, PaymentMethod } from '@/types/order';
@@ -55,10 +56,13 @@ const HISTORY_FULL_RANGE_FOR_APPEND = `${HISTORY_SHEET_NAME_ONLY}!A:F`;
 // Cache for sheet GIDs to avoid repeated lookups
 const sheetGidCache: Record<string, number | null> = {};
 
-// Encryption constants
-const ENCRYPTION_TAG = "encryption";
-// THIS IS A VERY WEAK KEY AND METHOD, FOR DEMONSTRATION ONLY. DO NOT USE IN PRODUCTION.
-const ENCRYPTION_KEY = process.env.IRON_SESSION_PASSWORD || "default_weak_encryption_key_32_chars"; 
+// Encryption constants & bcrypt
+const SALT_ROUNDS = 10;
+const XOR_TAG = "ENC_XOR"; // For old XOR passwords
+const BCRYPT_PREFIX_1 = "$2a$";
+const BCRYPT_PREFIX_2 = "$2b$";
+// THIS IS A VERY WEAK KEY AND METHOD, FOR DEMONSTRATION ONLY FOR XOR. DO NOT USE IN PRODUCTION.
+const XOR_ENCRYPTION_KEY = process.env.IRON_SESSION_PASSWORD || "default_weak_encryption_key_32_chars"; 
 
 // Initialize Google Sheets client
 const initializeSheetsClient = () => {
@@ -154,7 +158,7 @@ const rowToUser = (row: any[]): User | null => {
   return {
     id: row[USER_COLUMN_MAP.id] ?? '',
     login: row[USER_COLUMN_MAP.login],
-    passwordHash: row[USER_COLUMN_MAP.passwordHash], // Keep as string
+    passwordHash: row[USER_COLUMN_MAP.passwordHash], 
     firstName: row[USER_COLUMN_MAP.firstName] || undefined,
     middleName: row[USER_COLUMN_MAP.middleName] || undefined,
     lastName: row[USER_COLUMN_MAP.lastName] || undefined,
@@ -634,26 +638,20 @@ export const syncRawProductsToSheet = async () => {
 
 // --- User Authentication Functions ---
 
-// Simple XOR "encryption" - NOT FOR PRODUCTION USE
-// Uses Buffer to correctly handle byte operations
-const xorEncryptDecrypt = (input: Buffer, key: string): Buffer => {
-  const keyBytes = Buffer.from(key, 'utf-8');
-  const result = Buffer.alloc(input.length);
-  for (let i = 0; i < input.length; i++) {
-    result[i] = input[i] ^ keyBytes[i % keyBytes.length];
+// XOR decryption helper (same as encryption for XOR)
+function xorDecrypt(ciphertextBuffer: Buffer, keyBuffer: Buffer): Buffer {
+  const resultBuffer = Buffer.alloc(ciphertextBuffer.length);
+  for (let i = 0; i < ciphertextBuffer.length; i++) {
+    resultBuffer[i] = ciphertextBuffer[i] ^ keyBuffer[i % keyBuffer.length];
   }
-  return result;
-};
+  return resultBuffer;
+}
 
-// Hash password (simple XOR encryption + Base64 for demonstration)
-export const hashPassword = async (password: string): Promise<string> => {
-  console.warn("[Security] Using simple XOR + Base64 for password 'encryption'. THIS IS NOT SECURE FOR PRODUCTION. Key used:", ENCRYPTION_KEY.substring(0,5) + "...");
-  const passwordBuffer = Buffer.from(password, 'utf-8');
-  const xoredBuffer = xorEncryptDecrypt(passwordBuffer, ENCRYPTION_KEY);
-  const base64Encoded = xoredBuffer.toString('base64'); // Encode to Base64
-  return `${ENCRYPTION_TAG}${base64Encoded}`;
+// Hash password with bcrypt
+export const hashPassword = async (plainPassword: string): Promise<string> => {
+  console.log("[Security] Hashing password with bcrypt.");
+  return await bcrypt.hash(plainPassword, SALT_ROUNDS);
 };
-
 
 // Get user data from sheet
 export const getUserDataFromSheet = async (login: string): Promise<User | null> => {
@@ -679,7 +677,7 @@ export const getUserDataFromSheet = async (login: string): Promise<User | null> 
       return null;
     }
     const userObject = rowToUser(userRow);
-    console.log(`[GSHEET User] User data found for "${login}":`, JSON.stringify(userObject));
+    console.log(`[GSHEET User] User data found for "${login}".`);
     return userObject;
   } catch (error: any) {
     console.error(`[GSHEET User] Error fetching user "${login}":`, error?.message || error);
@@ -688,28 +686,45 @@ export const getUserDataFromSheet = async (login: string): Promise<User | null> 
 };
 
 // Verify password
-export const verifyPassword = async (inputPassword: string, storedPasswordWithTag: string): Promise<boolean> => {
-  console.log(`[GSHEET VerifyPassword] Input: "${inputPassword}", Stored: "${storedPasswordWithTag}"`);
-  if (typeof storedPasswordWithTag !== 'string') {
-    console.error("[GSHEET VerifyPassword] Stored password is not a string.");
+export const verifyPassword = async (inputPassword: string, storedPasswordHash: string): Promise<boolean> => {
+  console.log(`[GSHEET VerifyPassword] Verifying password for input length: ${inputPassword.length}, storedHash type: ${typeof storedPasswordHash}`);
+  
+  if (!storedPasswordHash || typeof storedPasswordHash !== 'string') {
+    console.warn("[GSHEET VerifyPassword] Stored password hash is missing or not a string.");
     return false;
   }
-  if (storedPasswordWithTag.startsWith(ENCRYPTION_TAG)) {
-    const base64EncodedPassword = storedPasswordWithTag.substring(ENCRYPTION_TAG.length);
+
+  // Check for bcrypt hash
+  if (storedPasswordHash.startsWith(BCRYPT_PREFIX_1) || storedPasswordHash.startsWith(BCRYPT_PREFIX_2)) {
+    console.log("[GSHEET VerifyPassword] Verifying bcrypt hash.");
     try {
-      const xoredStoredPasswordBuffer = Buffer.from(base64EncodedPassword, 'base64'); // Decode from Base64 to Buffer
-      const decryptedStoredPasswordBuffer = xorEncryptDecrypt(xoredStoredPasswordBuffer, ENCRYPTION_KEY);
-      const decryptedStoredPassword = decryptedStoredPasswordBuffer.toString('utf-8'); // Convert decrypted Buffer to string
-      console.log(`[Security] Verifying 'encrypted' (XOR+Base64) password. Decrypted stored: "${decryptedStoredPassword}". Key used:`, ENCRYPTION_KEY.substring(0,5) + "...");
-      return inputPassword === decryptedStoredPassword;
-    } catch (e) {
-      console.error("[GSHEET VerifyPassword] Error decoding/decrypting password:", e);
-      return false; 
+      return await bcrypt.compare(inputPassword, storedPasswordHash);
+    } catch (error) {
+      console.error("[GSHEET VerifyPassword] Error comparing bcrypt hash:", error);
+      return false;
     }
-  } else {
-    console.warn("[Security] Comparing plain text password. User should update their password.");
-    return inputPassword === storedPasswordWithTag;
   }
+
+  // Check for old XOR_TAG
+  if (storedPasswordHash.startsWith(XOR_TAG)) {
+    console.log("[GSHEET VerifyPassword] Verifying old XOR_TAG password.");
+    const base64EncodedPassword = storedPasswordHash.substring(XOR_TAG.length);
+    try {
+      const xoredBuffer = Buffer.from(base64EncodedPassword, 'base64');
+      const keyBuffer = Buffer.from(XOR_ENCRYPTION_KEY, 'utf-8');
+      const decryptedBuffer = xorDecrypt(xoredBuffer, keyBuffer);
+      const decryptedString = decryptedBuffer.toString('utf-8');
+      console.log(`[Security] XOR Decrypted stored: "${decryptedString.substring(0,2)}..."`);
+      return inputPassword === decryptedString;
+    } catch (error) {
+      console.error("[GSHEET VerifyPassword] Error XOR-decrypting password:", error);
+      return false;
+    }
+  }
+
+  // Fallback to plain text comparison (for very old passwords)
+  console.warn("[Security] Comparing plain text password. User should update their password.");
+  return inputPassword === storedPasswordHash;
 };
 
 
@@ -739,7 +754,7 @@ export const updateUserInSheet = async (originalLogin: string, updates: Partial<
   }
 
   try {
-    console.log(`[GSHEET User] Updating user: "${originalLogin}" with updates:`, JSON.stringify(updates)); 
+    console.log(`[GSHEET User] Updating user: "${originalLogin}" with updates:`, JSON.stringify(Object.keys(updates))); 
     const rowIndex = await findUserRowIndexByLogin(originalLogin);
     if (rowIndex === null) {
       console.error(`[GSHEET User] User "${originalLogin}" not found for update.`);
@@ -774,13 +789,10 @@ export const updateUserInSheet = async (originalLogin: string, updates: Partial<
         updatedRow[USER_COLUMN_MAP.login] = updates.login;
     }
     
-    // If updates.passwordHash is provided, it's expected to be the new PLAIN TEXT password.
-    // This function will hash it before saving.
+    // If updates.passwordHash is provided, it is assumed to be ALREADY HASHED (e.g., by bcrypt by the caller)
     if (updates.passwordHash !== undefined) {
-      console.log(`[GSHEET User] New plain password received for hashing: "${updates.passwordHash.substring(0,2)}..." for user: ${originalLogin}`);
-      const newHashedPassword = await hashPassword(updates.passwordHash); // hashPassword expects plain text
-      updatedRow[USER_COLUMN_MAP.passwordHash] = newHashedPassword;
-      console.log(`[GSHEET User] New hashed password for sheet: "${newHashedPassword}"`);
+      updatedRow[USER_COLUMN_MAP.passwordHash] = updates.passwordHash;
+      console.log(`[GSHEET User] Storing new password hash for user ${originalLogin}: "${updates.passwordHash.substring(0,7)}..."`);
     }
 
     if (updates.firstName !== undefined) updatedRow[USER_COLUMN_MAP.firstName] = updates.firstName || '';
