@@ -644,7 +644,7 @@ export function OrderBuilder() {
       </div>
 
       <div className="hidden lg:block lg:col-span-1">
-         <Card className="shadow-md lg:sticky lg:top-4 md:top-8 max-h-[calc(100vh-4rem)] flex flex-col">
+         <Card className="shadow-md lg:sticky max-h-[calc(100vh-4rem)] flex flex-col" style={{top: '4rem'}}>
           <CardHeader className="p-3 md:p-4 pb-3 flex-shrink-0" aria-labelledby={orderCardTitleId}>
             <CardTitle id={orderCardTitleId} className="text-xl">Текущий заказ</CardTitle>
           </CardHeader>

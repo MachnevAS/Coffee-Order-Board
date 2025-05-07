@@ -52,7 +52,7 @@ export default function Home() {
           <Button 
             variant="ghost" 
             size="icon" 
-            className="absolute top-2 right-2 h-6 w-6"
+            className="absolute top-2 right-2 h-6 w-6" style={{paddingLeft: 0}}
             onClick={handleDismissWarning}
             aria-label="Закрыть предупреждение"
           >
