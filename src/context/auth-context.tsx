@@ -4,17 +4,17 @@
 import React, { createContext, useState, useContext, useEffect, useCallback, ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import type { User } from '@/types/user';
-import { useToast } from '@/hooks/use-toast'; // Import useToast
+import { useToast } from '@/hooks/use-toast';
 
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  showPasswordChangeWarning: boolean; // Added
+  showPasswordChangeWarning: boolean;
   login: (login: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
   updateUser: (updates: Partial<User>) => Promise<boolean>;
   verifyAndChangePassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
-  clearPasswordChangeWarning: () => void; // Added
+  clearPasswordChangeWarning: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -22,13 +22,13 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [showPasswordChangeWarning, setShowPasswordChangeWarning] = useState(false); // Added state
+  const [showPasswordChangeWarning, setShowPasswordChangeWarning] = useState(false);
   const router = useRouter();
-  const pathname = usePathname();
+  const pathname = usePathname(); // Keep pathname for potential future use, though not directly in fetchUser deps
   const { toast } = useToast();
 
   const fetchUser = useCallback(async (isInitialLoad = false) => {
-    if (isInitialLoad) setIsLoading(true);
+    if (isInitialLoad && !isLoading) setIsLoading(true); // Set loading true only if not already loading
     console.log("[AuthContext] Fetching user...");
     try {
       const res = await fetch('/api/auth/user');
@@ -36,9 +36,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (res.ok && data.user) {
         setUser(data.user);
-        // Check for password warning status from user data if available,
-        // or retain existing warning if not (e.g., if user object doesn't explicitly carry this state from backend)
-        // This logic might need adjustment based on how backend sends warning status persistently
         if (typeof data.showPasswordChangeWarning === 'boolean') {
             setShowPasswordChangeWarning(data.showPasswordChangeWarning);
         }
@@ -53,19 +50,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setUser(null);
       setShowPasswordChangeWarning(false);
     } finally {
-      if (isInitialLoad) setIsLoading(false);
-      console.log("[AuthContext] Finished fetching user. Loading:", isLoading);
+      // Only set isLoading to false if it was an initial load attempt or if it's currently true
+      if (isInitialLoad || isLoading) setIsLoading(false);
+      console.log("[AuthContext] Finished fetching user. Loading state:", isLoading);
     }
-  }, [isLoading]); // Removed router and pathname as they are not direct dependencies for fetchUser
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // isLoading removed from deps to avoid re-triggering fetchUser on its own change
 
   useEffect(() => {
     fetchUser(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, []); // Runs once on mount
 
   const login = useCallback(async (loginInput: string, passwordInput: string): Promise<boolean> => {
     setIsLoading(true);
-    setShowPasswordChangeWarning(false); // Reset warning on new login attempt
+    setShowPasswordChangeWarning(false);
     console.log(`[AuthContext] Attempting login for: ${loginInput}`);
     try {
       const res = await fetch('/api/auth/login', {
@@ -79,10 +78,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (res.ok && data.user) {
         setUser(data.user);
         if (data.showPasswordChangeWarning) {
-          setShowPasswordChangeWarning(true); // Set warning from API response
-          // Toast is now shown on the page itself via an Alert component
+          setShowPasswordChangeWarning(true);
         }
         console.log("[AuthContext] Login successful:", data.user.login);
+        // router.push('/'); // LoginPage now handles this redirect
         return true;
       } else {
         console.log("[AuthContext] Login failed:", res.status, data.error || 'No error message from API');
@@ -97,26 +96,30 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setIsLoading(false);
       console.log("[AuthContext] Login attempt finished.");
     }
-  }, []);
+  }, [toast]); // Added toast to dependencies
 
   const logout = useCallback(async () => {
-    setIsLoading(true);
     console.log("[AuthContext] Initiating logout...");
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
-      console.log("[AuthContext] Logout API call successful.");
+      console.log("[AuthContext] Logout API call successful. Session cookie should be cleared by server.");
     } catch (error) {
       console.error('[AuthContext] Logout API error:', error);
+      toast({
+        title: "Ошибка выхода",
+        description: "Не удалось связаться с сервером для выхода. Попробуйте снова.",
+        variant: "destructive",
+      });
     } finally {
       setUser(null);
-      setShowPasswordChangeWarning(false); // Clear warning on logout
-      console.log("[AuthContext] Client-side user state cleared.");
-      // router.push('/login'); // Middleware will handle redirect
-      // router.refresh(); // Middleware will handle redirect
-      setIsLoading(false);
-      console.log("[AuthContext] Logout process complete. User should be redirected by middleware.");
+      setShowPasswordChangeWarning(false);
+      setIsLoading(false); 
+      console.log("[AuthContext] Client-side user state cleared. Navigating to /login.");
+      router.push('/login');
+      router.refresh(); // Force re-evaluation of server state and middleware
+      console.log("[AuthContext] Logout process complete. Navigated to /login and refreshed.");
     }
-  }, [router]);
+  }, [router, toast]);
 
  const updateUser = useCallback(async (updates: Partial<User>): Promise<boolean> => {
     if (!user) {
@@ -167,7 +170,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (res.ok) {
         console.log("[AuthContext] Password change successful for:", user.login);
-        setShowPasswordChangeWarning(false); // Clear warning after successful password change
+        setShowPasswordChangeWarning(false);
         return true;
       } else {
         console.error("[AuthContext] Password change failed:", res.status, data.error || 'No error message from API');
@@ -188,12 +191,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
 
   useEffect(() => {
-    console.log("[AuthContext] User state changed:", user?.login ?? 'null');
-  }, [user]);
+    console.log("[AuthContext] User state changed:", user?.login ?? 'null', "isLoading:", isLoading);
+  }, [user, isLoading]);
 
-  useEffect(() => {
-    console.log("[AuthContext] Loading state changed:", isLoading);
-  }, [isLoading]);
 
   return (
     <AuthContext.Provider value={{ user, isLoading, showPasswordChangeWarning, login, logout, updateUser, verifyAndChangePassword, clearPasswordChangeWarning }}>

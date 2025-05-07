@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -14,7 +14,6 @@ import { useAuth } from '@/context/auth-context';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle } from 'lucide-react';
 
-// Схема валидации вынесена за пределы компонента для оптимизации
 const loginSchema = z.object({
   login: z.string().min(1, 'Логин обязателен'),
   password: z.string().min(1, 'Пароль обязателен'),
@@ -24,8 +23,9 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const { login } = useAuth();
+  // isLoading state now reflects form submission status, not global auth loading
+  const [isFormSubmitting, setIsFormSubmitting] = useState(false); 
+  const { login, user, isLoading: authIsLoading } = useAuth(); // authIsLoading for global state
   const router = useRouter();
   const { toast } = useToast();
 
@@ -37,11 +37,20 @@ export default function LoginPage() {
     },
   });
 
+  // Redirect if user is already authenticated
+  useEffect(() => {
+    if (user && !authIsLoading) { // Use authIsLoading here
+      console.log("[LoginPage] User is authenticated, redirecting to /");
+      router.push('/');
+    }
+  }, [user, router, authIsLoading]);
+
+
   const onSubmit = async (data: LoginFormValues) => {
-    if (isLoading) return; // Предотвращаем множественные отправки
+    if (isFormSubmitting) return;
     
     setError(null);
-    setIsLoading(true);
+    setIsFormSubmitting(true); // Use local form submitting state
     
     try {
       const loginSuccessful = await login(data.login, data.password);
@@ -51,12 +60,9 @@ export default function LoginPage() {
           title: 'Вход выполнен',
           description: 'Добро пожаловать!',
         });
-        
-        // Используем setTimeout для гарантии выполнения после обновления состояния
-        setTimeout(() => {
-          router.push('/');
-          router.refresh();
-        }, 0);
+        // router.push('/'); // This will now be handled by the useEffect above once 'user' state updates
+                           // or by middleware if it catches the change faster.
+                           // Let's ensure the user state propagates before a forced push.
       } else {
         setError('Неверный логин или пароль');
         toast({
@@ -66,7 +72,7 @@ export default function LoginPage() {
         });
       }
     } catch (err) {
-      console.error('Login error:', err);
+      console.error('Login page submit error:', err);
       setError('Произошла ошибка при входе. Попробуйте снова.');
       toast({
         title: 'Ошибка сервера',
@@ -74,11 +80,10 @@ export default function LoginPage() {
         variant: 'destructive',
       });
     } finally {
-      setIsLoading(false);
+      setIsFormSubmitting(false); // Reset local form submitting state
     }
   };
 
-  // Мемоизируем форму ошибки для предотвращения ненужных перерисовок
   const errorAlert = error ? (
     <Alert variant="destructive">
       <AlertCircle className="h-4 w-4" />
@@ -86,6 +91,18 @@ export default function LoginPage() {
       <AlertDescription>{error}</AlertDescription>
     </Alert>
   ) : null;
+
+  // If global auth is loading, or if user is already set (and useEffect will redirect), show loading/minimal UI
+  if (authIsLoading) {
+    return (
+        <main className="flex flex-col items-center justify-center p-4 min-h-screen">
+            <p className="text-muted-foreground">Загрузка...</p>
+        </main>
+    );
+  }
+  // If user is already set, the useEffect will handle redirection.
+  // Showing the form briefly while redirecting might be okay or show a "Redirecting..." message.
+  // For now, let's assume the useEffect handles it quickly.
 
   return (
     <main className="flex flex-col items-center justify-center p-4" style={{height: "80vh"}}>
@@ -107,7 +124,7 @@ export default function LoginPage() {
                       <Input 
                         placeholder="Ваш логин" 
                         {...field} 
-                        disabled={isLoading}
+                        disabled={isFormSubmitting} // Use local form submitting state
                         autoComplete="username" 
                       />
                     </FormControl>
@@ -126,7 +143,7 @@ export default function LoginPage() {
                         type="password" 
                         placeholder="Ваш пароль" 
                         {...field} 
-                        disabled={isLoading}
+                        disabled={isFormSubmitting} // Use local form submitting state
                         autoComplete="current-password" 
                       />
                     </FormControl>
@@ -138,9 +155,9 @@ export default function LoginPage() {
               <Button 
                 type="submit" 
                 className="w-full" 
-                disabled={isLoading}
+                disabled={isFormSubmitting} // Use local form submitting state
               >
-                {isLoading ? 'Вход...' : 'Войти'}
+                {isFormSubmitting ? 'Вход...' : 'Войти'} 
               </Button>
             </form>
           </Form>
