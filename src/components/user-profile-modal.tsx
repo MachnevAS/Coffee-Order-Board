@@ -261,7 +261,7 @@ export default function UserProfileModal({ isOpen, setIsOpen }: UserProfileModal
                   name="login"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Логин</FormLabel>
+                      <FormLabel>Логин (обязательно)</FormLabel>                        
                       <FormControl>
                         <Input {...field} disabled={isProcessing} className="bg-background" />
                       </FormControl>
