@@ -204,6 +204,22 @@ export function SalesHistory() {
     return filtered;
   }, [orders, dateRange, sortConfig]);
 
+  const salesSummary = useMemo(() => {
+    const summary = {
+      total: 0,
+      Наличные: 0,
+      Карта: 0,
+      Перевод: 0,
+    };
+
+    filteredAndSortedOrders.forEach(order => {
+      summary.total += order.totalPrice;
+      if (order.paymentMethod) {
+        summary[order.paymentMethod] += order.totalPrice;
+      }
+    });
+    return summary;
+  }, [filteredAndSortedOrders]);
 
   const initiateDeleteOrder = useCallback((order: Order) => {
     if (isLoading || isProcessingAction) return;
@@ -557,6 +573,31 @@ export function SalesHistory() {
           </Table>
           <ScrollBar orientation="horizontal" />
         </ScrollArea>
+
+        {filteredAndSortedOrders.length > 0 && (
+          <div className="mt-6 p-4 border-t bg-muted/20 rounded-b-md flex flex-col sm:flex-row justify-between items-center gap-4 text-sm md:text-base">
+            <div className="font-semibold text-center sm:text-left">
+              Общая сумма: <span className="text-primary">{formatCurrency(salesSummary.total)}</span>
+            </div>
+            <div className="flex items-center gap-4 flex-wrap justify-center sm:justify-start">
+              <div className="flex items-center gap-1">
+                <PaymentMethodIcon method="Наличные" />
+                <span>Наличные:</span>
+                <span className="font-medium">{formatCurrency(salesSummary.Наличные)}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <PaymentMethodIcon method="Карта" />
+                <span>Карта:</span>
+                <span className="font-medium">{formatCurrency(salesSummary.Карта)}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <PaymentMethodIcon method="Перевод" />
+                <span>Перевод:</span>
+                <span className="font-medium">{formatCurrency(salesSummary.Перевод)}</span>
+              </div>
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
